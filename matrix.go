@@ -11,7 +11,7 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-func initMatrixBot(cfg configMatrixBot) (*mautrix.Client, error) {
+func initMatrixBot(cfg configMatrixBot, ds *dataStore) (*mautrix.Client, error) {
 	us := id.UserID(cfg.AccountID)
 	cli, err := mautrix.NewClient(cfg.Homeserver, us, cfg.Token)
 	if err != nil {
@@ -25,7 +25,7 @@ func initMatrixBot(cfg configMatrixBot) (*mautrix.Client, error) {
 			return
 		}
 
-		handleMessage(cli, ev)
+		handleMessage(cli, ds, ev)
 	})
 	syncer.OnEventType(event.StateMember, func(_ mautrix.EventSource, ev *event.Event) {
 		if ev.Sender == us {
@@ -64,11 +64,14 @@ func initMatrixBot(cfg configMatrixBot) (*mautrix.Client, error) {
 	return cli, nil
 }
 
-func handleMessage(cli *mautrix.Client, ev *event.Event) {
+func handleMessage(cli *mautrix.Client, ds *dataStore, ev *event.Event) {
 	var err error
-	switch strings.TrimSpace(ev.Content.AsMessage().Body) {
+
+	str := strings.TrimSpace(ev.Content.AsMessage().Body)
+	str = strings.ToLower(str)
+	switch str {
 	case "listevents":
-		err = cmdListEvents(cli, ev.RoomID)
+		err = cmdListEvents(cli, ds, ev.Sender, ev.RoomID)
 	default:
 		err = sendMessage(cli, ev.RoomID, "Unknown command")
 	}
@@ -78,7 +81,12 @@ func handleMessage(cli *mautrix.Client, ev *event.Event) {
 	}
 }
 
-func cmdListEvents(cli *mautrix.Client, roomID id.RoomID) error {
+func cmdListEvents(cli *mautrix.Client, ds *dataStore, userID id.UserID, roomID id.RoomID) error {
+	data := ds.userData(userID)
+	_ = data
+
+	// TODO: get calendar data from data
+	// @@@@@
 	cal, err := newCalDavCalendar(os.Getenv("CAL"))
 	if err != nil {
 		return err
@@ -102,7 +110,6 @@ func sendMessage(cli *mautrix.Client, roomID id.RoomID, msg string) error {
 		Body: msg,
 	})
 	return err
-
 }
 
 func ignoreOldMessagesSyncHandler(resp *mautrix.RespSync, since string) bool {
