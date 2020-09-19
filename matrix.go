@@ -4,15 +4,16 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
 
-func initMatrixBot() (*mautrix.Client, error) {
-	us := id.UserID("@calendartest:remi.im")
-	cli, err := mautrix.NewClient("https://remi.im", us, os.Getenv("TOKEN"))
+func initMatrixBot(cfg configMatrixBot) (*mautrix.Client, error) {
+	us := id.UserID(cfg.AccountID)
+	cli, err := mautrix.NewClient(cfg.Homeserver, us, cfg.Token)
 	if err != nil {
 		return nil, err
 	}
@@ -35,6 +36,8 @@ func initMatrixBot() (*mautrix.Client, error) {
 		}
 
 		fmt.Println("Invite: ", ev)
+		// TODO: Welcome message
+		// TODO: Support only 1-1 rooms
 
 		resp, err := cli.JoinRoom(ev.RoomID.String(), "", nil)
 		fmt.Println("JoinRoom response:", resp)
@@ -45,11 +48,16 @@ func initMatrixBot() (*mautrix.Client, error) {
 
 	// Non-blocking version
 	go func() {
+		backOff := 0
 		for {
 			if err := cli.Sync(); err != nil {
 				fmt.Println("Sync() returned ", err)
+				sleep := backOff * 2
+				<-time.After(time.Duration(sleep) * time.Second)
+				backOff++
+				continue
 			}
-			// Optional: Wait a period of time before trying to sync again.
+			backOff = 0
 		}
 	}()
 
