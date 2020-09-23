@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -69,9 +68,23 @@ func handleMessage(cli *mautrix.Client, ds *dataStore, ev *event.Event) {
 
 	str := strings.TrimSpace(ev.Content.AsMessage().Body)
 	str = strings.ToLower(str)
-	switch str {
+
+	args := strings.Split(str, " ")
+	if len(args) < 0 {
+		return
+	}
+
+	ud, err := ds.userData(ev.Sender)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	switch args[0] {
 	case "listevents":
-		err = cmdListEvents(cli, ds, ev.Sender, ev.RoomID)
+		err = cmdListEvents(cli, ud, ev.RoomID)
+	case "addcalendar":
+		err = cmdAddCalendar(cli, ud, ev.RoomID, args)
 	default:
 		err = sendMessage(cli, ev.RoomID, "Unknown command")
 	}
@@ -81,13 +94,10 @@ func handleMessage(cli *mautrix.Client, ds *dataStore, ev *event.Event) {
 	}
 }
 
-func cmdListEvents(cli *mautrix.Client, ds *dataStore, userID id.UserID, roomID id.RoomID) error {
-	data := ds.userData(userID)
-	_ = data
-
+func cmdListEvents(cli *mautrix.Client, ud *userData, roomID id.RoomID) error {
 	// TODO: get calendar data from data
 	// @@@@@
-	cal, err := newCalDavCalendar(os.Getenv("CAL"))
+	cal, err := newCalDavCalendar(ud.calendars[0].URI)
 	if err != nil {
 		return err
 	}
@@ -103,6 +113,25 @@ func cmdListEvents(cli *mautrix.Client, ds *dataStore, userID id.UserID, roomID 
 	}
 
 	return sendMessage(cli, roomID, msg)
+}
+
+func cmdAddCalendar(cli *mautrix.Client, ud *userData, roomID id.RoomID, args []string) error {
+	if len(args) < 2 {
+		sendMessage(cli, roomID, "Provide the URI")
+		// TODO: Improve message
+		return nil
+	}
+
+	uri := args[1]
+
+	_, err := newCalDavCalendar(uri)
+	if err != nil {
+		sendMessage(cli, roomID, "Specified URI is not a supported CalDAV calendar")
+		fmt.Println(err)
+		return nil
+	}
+
+	return ud.addCalendar(uri)
 }
 
 func sendMessage(cli *mautrix.Client, roomID id.RoomID, msg string) error {

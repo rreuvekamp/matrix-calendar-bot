@@ -40,8 +40,8 @@ func (d *sqlDB) createTables() error {
 	calendarSQL := `CREATE TABLE IF NOT EXISTS calendar (
 		"id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
 		"user_id" TEXT,
-		"uri" TEXT );`
-	// TODO: updated, created
+		"uri" TEXT,
+		"created" datetime default current_timestamp);`
 
 	_, err := d.db.Exec(calendarSQL)
 	return err

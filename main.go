@@ -4,23 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
-
-	"maunium.net/go/mautrix/id"
 )
 
 func main() {
-	fmt.Println("1")
-
-	db, err := initSQLDB("matrix-caldav-bot.db")
-	if err != nil {
-		panic(err)
-	}
-
-	dbid, err := db.addCalendar(id.UserID("@remi:remi.im"), "https://ijsbeer.nl")
-	fmt.Println(dbid, err)
-
-	cals, err := db.fetchCalendars(id.UserID("@remi:remi.im"))
-	fmt.Println(cals, err)
 
 	cfgFileName := flag.String("config-filename", "config.json", "")
 	flag.Parse()
@@ -39,7 +25,12 @@ func main() {
 		return
 	}
 
-	initMatrixBot(cfg.MatrixBot, newDataStore())
+	db, err := initSQLDB(cfg.SQLiteURI)
+	if err != nil {
+		panic(err)
+	}
+
+	initMatrixBot(cfg.MatrixBot, newDataStore(db))
 
 	fmt.Println("Started")
 

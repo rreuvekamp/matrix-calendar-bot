@@ -8,13 +8,14 @@ import (
 )
 
 type config struct {
-	MatrixBot configMatrixBot
+	MatrixBot configMatrixBot `json:"matrix_bot"`
+	SQLiteURI string          `json:"sqlite_uri"`
 }
 
 type configMatrixBot struct {
-	Homeserver string
-	AccountID  string
-	Token      string
+	Homeserver string `json:"homeserver"`
+	AccountID  string `json:"account_id"`
+	Token      string `json:"token"`
 }
 
 type loadConfigError struct {
@@ -32,6 +33,7 @@ var defaultConfig = config{
 		AccountID:  "@calendarbot:remi.im",
 		Token:      "",
 	},
+	SQLiteURI: "matrix-caldav-bot.db",
 }
 
 // loadConfig unmarhsals the contents of the file with given filename as JSON, which
