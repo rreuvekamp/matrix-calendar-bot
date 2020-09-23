@@ -102,14 +102,30 @@ func cmdListEvents(cli *mautrix.Client, ud *userData, roomID id.RoomID) error {
 		return err
 	}
 
-	events, err := cal.events()
+	now := time.Now()
+	startOfWeek := time.Date(now.Year(), now.Month(), now.Day()-int(now.Weekday())+1, 0, 0, 0, 0, now.Location())
+	endOfWeek := startOfWeek
+	endOfWeek = endOfWeek.Add(7 * 24 * time.Hour)
+
+	events, err := cal.events(startOfWeek, endOfWeek)
 	if err != nil {
 		return err
 	}
 
+	// TODO: Properly handle multi-day events.
+
 	msg := ""
+	last := time.Time{}
 	for _, calEv := range events {
-		msg += fmt.Sprintf("%s - %s: %s\n", calEv.from.Format("2006-01-02 15:04"), calEv.to.Format("15:04"), calEv.text)
+		if last == (time.Time{}) || calEv.from.Format("2006-01-02") != last.Format("2006-01-02") {
+			// Different day from last event
+
+			msg += fmt.Sprintf("\n%s\n", calEv.from.Format("Monday 2 Januari"))
+		}
+
+		msg += fmt.Sprintf("%s - %s: %s\n", calEv.from.Format("15:04"), calEv.to.Format("15:04"), calEv.text)
+
+		last = calEv.from
 	}
 
 	return sendMessage(cli, roomID, msg)

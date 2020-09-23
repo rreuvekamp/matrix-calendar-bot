@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/dolanor/caldav-go/caldav"
@@ -21,6 +22,9 @@ type calDavCalendar struct {
 	client *caldav.Client
 }
 
+// calendarEvents implements sort.Interface
+type calendarEvents []calendarEvent
+
 func newCalDavCalendar(url string) (*calDavCalendar, error) {
 	server, err := caldav.NewServer(url)
 	if err != nil {
@@ -34,7 +38,7 @@ func newCalDavCalendar(url string) (*calDavCalendar, error) {
 	return &calDavCalendar{client}, err
 }
 
-func (cal *calDavCalendar) events() ([]calendarEvent, error) {
+func (cal *calDavCalendar) events(from time.Time, until time.Time) (calendarEvents, error) {
 	calDavEvents, err := cal.client.GetEvents("")
 	if err != nil {
 		fmt.Println(err)
@@ -43,9 +47,12 @@ func (cal *calDavCalendar) events() ([]calendarEvent, error) {
 
 	events := []calendarEvent{}
 
-	now := time.Now()
 	for _, ev := range calDavEvents {
-		if ev.DateStart.NativeTime().Before(now) {
+		if from != (time.Time{}) && ev.DateStart.NativeTime().Before(from) {
+			continue
+		}
+
+		if until != (time.Time{}) && until.Before(ev.DateStart.NativeTime()) {
 			continue
 		}
 
@@ -58,5 +65,19 @@ func (cal *calDavCalendar) events() ([]calendarEvent, error) {
 		events = append(events, event)
 	}
 
+	sort.Sort(calendarEvents(events))
+
 	return events, nil
+}
+
+func (c calendarEvents) Len() int {
+	return len(c)
+}
+
+func (c calendarEvents) Less(i, j int) bool {
+	return c[i].from.Unix() < c[j].from.Unix()
+}
+
+func (c calendarEvents) Swap(i, j int) {
+	c[i], c[j] = c[j], c[i]
 }
