@@ -4,11 +4,14 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
+
+	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/id"
 )
 
 func main() {
-
-	cfgFileName := flag.String("config-filename", "config.json", "")
+	cfgFileName := flag.String("config", "config.json", "")
 	flag.Parse()
 
 	cfg, isNew, err := loadConfig(*cfgFileName)
@@ -27,12 +30,52 @@ func main() {
 
 	db, err := initSQLDB(cfg.SQLiteURI)
 	if err != nil {
-		panic(err)
+		fmt.Println("Error initialising database:", err)
+		os.Exit(4)
 	}
 
-	initMatrixBot(cfg.MatrixBot, newDataStore(db))
+	cli, err := initMatrixBot(cfg.MatrixBot, newDataStore(db))
+	if err != nil {
+		fmt.Println("Error initialising Matrix connection:", err)
+		os.Exit(3)
+	}
+
+	go setupReminders(cli, db)
 
 	fmt.Println("Started")
 
 	<-make(chan struct{})
+}
+
+func setupReminders(cli *mautrix.Client, db *sqlDB) {
+	cals, err := db.fetchAllCalendars()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	for _, uc := range cals {
+		cal, err := uc.calendar()
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+
+		evs, err := cal.events(time.Now(), time.Now().Add(24*time.Hour))
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+
+		for _, event := range evs {
+			ev := event
+			go func() {
+				fmt.Println("Setup reminder for:", ev.text)
+				<-time.After(time.Until(ev.from))
+				sendMessage(cli, id.RoomID("!qvPycavGoabBgSxiDz:remi.im"), "Reminder for:"+ev.text)
+			}()
+		}
+
+		<-time.After(100 * time.Millisecond)
+	}
 }

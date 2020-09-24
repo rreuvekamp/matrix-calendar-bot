@@ -95,9 +95,7 @@ func handleMessage(cli *mautrix.Client, ds *dataStore, ev *event.Event) {
 }
 
 func cmdListEvents(cli *mautrix.Client, ud *userData, roomID id.RoomID) error {
-	// TODO: get calendar data from data
-	// @@@@@
-	cal, err := newCalDavCalendar(ud.calendars[0].URI)
+	cal, err := ud.calendars[0].calendar()
 	if err != nil {
 		return err
 	}

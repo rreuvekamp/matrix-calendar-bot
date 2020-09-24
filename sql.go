@@ -10,8 +10,9 @@ import (
 type sqlDB struct {
 	db *sql.DB
 
-	stmtFetchCalendars *sql.Stmt
-	stmtAddCalendar    *sql.Stmt
+	stmtFetchCalendars    *sql.Stmt
+	stmtFetchAllCalendars *sql.Stmt
+	stmtAddCalendar       *sql.Stmt
 }
 
 func initSQLDB(path string) (*sqlDB, error) {
@@ -27,7 +28,12 @@ func initSQLDB(path string) (*sqlDB, error) {
 		return d, err
 	}
 
-	d.stmtFetchCalendars, err = db.Prepare("SELECT id, uri FROM calendar WHERE user_id = ?;")
+	d.stmtFetchCalendars, err = db.Prepare("SELECT id, user_id, uri FROM calendar WHERE user_id = ?;")
+	if err != nil {
+		return d, err
+	}
+
+	d.stmtFetchAllCalendars, err = db.Prepare("SELECT id, user_id, uri FROM calendar;")
 	if err != nil {
 		return d, err
 	}
@@ -47,6 +53,16 @@ func (d *sqlDB) createTables() error {
 	return err
 }
 
+func (d *sqlDB) fetchAllCalendars() ([]userCalendar, error) {
+	rows, err := d.stmtFetchAllCalendars.Query()
+	defer rows.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	return rowsToCalendars(rows)
+}
+
 func (d *sqlDB) fetchCalendars(userID id.UserID) ([]userCalendar, error) {
 	rows, err := d.stmtFetchCalendars.Query(userID)
 	defer rows.Close()
@@ -54,13 +70,20 @@ func (d *sqlDB) fetchCalendars(userID id.UserID) ([]userCalendar, error) {
 		return nil, err
 	}
 
+	return rowsToCalendars(rows)
+}
+
+func rowsToCalendars(rows *sql.Rows) ([]userCalendar, error) {
 	cals := []userCalendar{}
 	for rows.Next() {
 		cal := userCalendar{}
-		err = rows.Scan(&cal.DBID, &cal.URI)
+		var userID string
+		err := rows.Scan(&cal.DBID, &userID, &cal.URI)
 		if err != nil {
 			return cals, err
 		}
+
+		cal.UserID = id.UserID(userID)
 
 		cals = append(cals, cal)
 	}

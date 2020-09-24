@@ -9,7 +9,7 @@ import (
 )
 
 type calendar interface {
-	events() []calendarEvent
+	events(from time.Time, until time.Time) (calendarEvents, error)
 }
 
 type calendarEvent struct {
@@ -18,6 +18,7 @@ type calendarEvent struct {
 	text string
 }
 
+// calDavCalendar implements calendar
 type calDavCalendar struct {
 	client *caldav.Client
 }
@@ -33,7 +34,6 @@ func newCalDavCalendar(url string) (*calDavCalendar, error) {
 
 	client := caldav.NewDefaultClient(server)
 
-	// start executing requests!
 	err = client.ValidateServer(url)
 	return &calDavCalendar{client}, err
 }
