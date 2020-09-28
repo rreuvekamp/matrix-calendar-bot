@@ -10,7 +10,7 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-func initMatrixBot(cfg configMatrixBot, ds *dataStore) (*mautrix.Client, error) {
+func initMatrixBot(cfg configMatrixBot, data *store) (*mautrix.Client, error) {
 	us := id.UserID(cfg.AccountID)
 	cli, err := mautrix.NewClient(cfg.Homeserver, us, cfg.Token)
 	if err != nil {
@@ -24,7 +24,7 @@ func initMatrixBot(cfg configMatrixBot, ds *dataStore) (*mautrix.Client, error) 
 			return
 		}
 
-		handleMessage(cli, ds, ev)
+		handleMessage(cli, data, ev)
 	})
 	syncer.OnEventType(event.StateMember, func(_ mautrix.EventSource, ev *event.Event) {
 		if ev.Sender == us {
@@ -63,7 +63,7 @@ func initMatrixBot(cfg configMatrixBot, ds *dataStore) (*mautrix.Client, error) 
 	return cli, nil
 }
 
-func handleMessage(cli *mautrix.Client, ds *dataStore, ev *event.Event) {
+func handleMessage(cli *mautrix.Client, data *store, ev *event.Event) {
 	var err error
 
 	str := strings.TrimSpace(ev.Content.AsMessage().Body)
@@ -74,7 +74,7 @@ func handleMessage(cli *mautrix.Client, ds *dataStore, ev *event.Event) {
 		return
 	}
 
-	ud, err := ds.userData(ev.Sender)
+	ud, err := data.user(ev.Sender)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -94,8 +94,8 @@ func handleMessage(cli *mautrix.Client, ds *dataStore, ev *event.Event) {
 	}
 }
 
-func cmdListEvents(cli *mautrix.Client, ud *userData, roomID id.RoomID) error {
-	cal, err := ud.calendars[0].calendar()
+func cmdListEvents(cli *mautrix.Client, u *user, roomID id.RoomID) error {
+	cal, err := u.calendars[0].calendar()
 	if err != nil {
 		return err
 	}
@@ -129,7 +129,7 @@ func cmdListEvents(cli *mautrix.Client, ud *userData, roomID id.RoomID) error {
 	return sendMessage(cli, roomID, msg)
 }
 
-func cmdAddCalendar(cli *mautrix.Client, ud *userData, roomID id.RoomID, args []string) error {
+func cmdAddCalendar(cli *mautrix.Client, u *user, roomID id.RoomID, args []string) error {
 	if len(args) < 2 {
 		sendMessage(cli, roomID, "Provide the URI")
 		// TODO: Improve message
@@ -145,7 +145,7 @@ func cmdAddCalendar(cli *mautrix.Client, ud *userData, roomID id.RoomID, args []
 		return nil
 	}
 
-	return ud.addCalendar(uri)
+	return u.addCalendar(uri)
 }
 
 func sendMessage(cli *mautrix.Client, roomID id.RoomID, msg string) error {
