@@ -58,6 +58,8 @@ type user struct {
 	persist *sqlDB
 
 	calendars []userCalendar
+
+	timerQuit chan struct{}
 }
 
 func (u *user) addCalendar(uri string) error {
@@ -72,29 +74,68 @@ func (u *user) addCalendar(uri string) error {
 	return nil
 }
 
-func (u *user) setupReminderTimer(cli *mautrix.Client) error {
+func (u *user) combinedCalendar() (calendar, error) {
+	cals := make([]calendar, 0, len(u.calendars))
 	for _, uc := range u.calendars {
 		cal, err := uc.calendar()
 		if err != nil {
-			return err
-		}
-		evs, err := cal.events(time.Now(), time.Now().Add(24*time.Hour))
-		if err != nil {
-			return err
+			return combinedCalendar(cals), err
 		}
 
-		for _, event := range evs {
-			ev := event
-			go func() {
-				fmt.Println("Setup reminder for:", ev.text)
-				<-time.After(time.Until(ev.from))
-				//sendMessage(cli, id.RoomID("!qvPycavGoabBgSxiDz:remi.im"), "Reminder for:"+ev.text)
-				fmt.Println("Reminder for: " + ev.text)
-			}()
-		}
-
-		<-time.After(100 * time.Millisecond)
+		cals = append(cals, cal)
 	}
 
+	return combinedCalendar(cals), nil
+}
+
+func (u *user) setupReminderTimer(cli *mautrix.Client) error {
+	cal, err := u.combinedCalendar()
+
+	if err != nil {
+		return err
+	}
+	evs, err := cal.events(time.Now(), time.Now().Add(5*time.Hour))
+	if err != nil {
+		return err
+	}
+
+	if u.timerQuit != nil {
+		u.timerQuit <- struct{}{}
+	}
+
+	quit := make(chan struct{})
+	u.timerQuit = quit
+
+	go func() {
+		for _, ev := range evs {
+			fmt.Println("Setup reminder for:", ev.text)
+
+			select {
+			case <-quit:
+				return
+			case <-time.After(time.Until(ev.from)):
+			}
+			sendMessage(cli, id.RoomID("!qvPycavGoabBgSxiDz:remi.im"), "Reminder for:"+ev.text)
+			fmt.Println("Reminder for: " + ev.text)
+		}
+	}()
+
 	return nil
+}
+
+type userCalendar struct {
+	DBID   int64
+	UserID id.UserID
+	URI    string
+
+	cal calendar
+}
+
+func (uc *userCalendar) calendar() (calendar, error) {
+	var err error
+	if uc.cal == nil {
+		uc.cal, err = newCalDavCalendar(uc.URI)
+	}
+
+	return uc.cal, err
 }

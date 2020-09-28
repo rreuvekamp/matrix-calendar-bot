@@ -6,25 +6,7 @@ import (
 	"time"
 
 	"github.com/dolanor/caldav-go/caldav"
-	"maunium.net/go/mautrix/id"
 )
-
-type userCalendar struct {
-	DBID   int64
-	UserID id.UserID
-	URI    string
-
-	cal calendar
-}
-
-func (uc *userCalendar) calendar() (calendar, error) {
-	var err error
-	if uc.cal == nil {
-		uc.cal, err = newCalDavCalendar(uc.URI)
-	}
-
-	return uc.cal, err
-}
 
 type calendar interface {
 	events(from time.Time, until time.Time) (calendarEvents, error)
@@ -78,6 +60,25 @@ func (cal *calDavCalendar) events(from time.Time, until time.Time) (calendarEven
 		}
 
 		events = append(events, event)
+	}
+
+	sort.Sort(calendarEvents(events))
+
+	return events, nil
+}
+
+type combinedCalendar []calendar
+
+func (cals combinedCalendar) events(from time.Time, until time.Time) (calendarEvents, error) {
+	var events []calendarEvent
+	for _, cal := range cals {
+		evs, err := cal.events(from, until)
+		if err != nil {
+			// TODO: Multierror
+			return events, err
+		}
+
+		events = append(events, []calendarEvent(evs)...)
 	}
 
 	sort.Sort(calendarEvents(events))

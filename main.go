@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 )
 
 func main() {
@@ -50,7 +51,13 @@ func main() {
 	fmt.Println("Setting up reminder timers...")
 
 	for _, user := range ds.users {
-		user.setupReminderTimer(cli)
+		go func() {
+			for {
+				user.setupReminderTimer(cli)
+				<-time.After(5 * time.Minute)
+			}
+		}()
+		<-time.After(100 * time.Millisecond)
 	}
 
 	fmt.Println("Done")
