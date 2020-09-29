@@ -45,7 +45,6 @@ func initMatrixBot(cfg configMatrixBot, data *store) (*mautrix.Client, error) {
 		}
 	})
 
-	// Non-blocking version
 	go func() {
 		backOff := 0
 		for {

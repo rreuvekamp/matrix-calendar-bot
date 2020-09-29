@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/dolanor/caldav-go/caldav"
@@ -20,6 +20,7 @@ type calendarEvent struct {
 
 // calDavCalendar implements calendar
 type calDavCalendar struct {
+	mutex  sync.Mutex
 	client *caldav.Client
 }
 
@@ -32,13 +33,14 @@ func newCalDavCalendar(url string) (*calDavCalendar, error) {
 	client := caldav.NewDefaultClient(server)
 
 	err = client.ValidateServer(url)
-	return &calDavCalendar{client}, err
+	return &calDavCalendar{client: client}, err
 }
 
 func (cal *calDavCalendar) events(from time.Time, until time.Time) (calendarEvents, error) {
+	cal.mutex.Lock()
 	calDavEvents, err := cal.client.GetEvents("")
+	cal.mutex.Unlock()
 	if err != nil {
-		fmt.Println(err)
 		return []calendarEvent{}, err
 	}
 
