@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"maunium.net/go/mautrix"
@@ -24,7 +23,10 @@ func initMatrixBot(cfg configMatrixBot, data *store) (*mautrix.Client, error) {
 			return
 		}
 
-		handleMessage(cli, data, ev)
+		reply := handleCommand(cli, data, ev)
+		for _, msg := range reply {
+			sendMessage(cli, ev.RoomID, msg.msg, msg.msgF)
+		}
 	})
 	syncer.OnEventType(event.StateMember, func(_ mautrix.EventSource, ev *event.Event) {
 		if ev.Sender == us {
@@ -62,95 +64,16 @@ func initMatrixBot(cfg configMatrixBot, data *store) (*mautrix.Client, error) {
 	return cli, nil
 }
 
-func handleMessage(cli *mautrix.Client, data *store, ev *event.Event) {
-	var err error
-
-	str := strings.TrimSpace(ev.Content.AsMessage().Body)
-	str = strings.ToLower(str)
-
-	args := strings.Split(str, " ")
-	if len(args) < 0 {
-		return
+func sendMessage(cli *mautrix.Client, roomID id.RoomID, msg string, msgF string) error {
+	ev := event.MessageEventContent{
+		MsgType: event.MsgNotice,
+		Body:    msg,
 	}
-
-	ud, err := data.user(ev.Sender)
-	if err != nil {
-		fmt.Println(err)
-		return
+	if msgF != "" {
+		ev.FormattedBody = msgF
+		ev.Format = event.FormatHTML
 	}
-
-	switch args[0] {
-	case "listevents":
-		err = cmdListEvents(cli, ud, ev.RoomID)
-	case "addcalendar":
-		err = cmdAddCalendar(cli, ud, ev.RoomID, args)
-	default:
-		err = sendMessage(cli, ev.RoomID, "Unknown command")
-	}
-
-	if err != nil {
-		fmt.Println(err)
-	}
-}
-
-func cmdListEvents(cli *mautrix.Client, u *user, roomID id.RoomID) error {
-	cal, err := u.calendars[0].calendar()
-	if err != nil {
-		return err
-	}
-
-	now := time.Now()
-	startOfWeek := time.Date(now.Year(), now.Month(), now.Day()-int(now.Weekday())+1, 0, 0, 0, 0, now.Location())
-	endOfWeek := startOfWeek
-	endOfWeek = endOfWeek.Add(7 * 24 * time.Hour)
-
-	events, err := cal.events(startOfWeek, endOfWeek)
-	if err != nil {
-		return err
-	}
-
-	// TODO: Properly handle multi-day events.
-
-	msg := ""
-	last := time.Time{}
-	for _, calEv := range events {
-		if last == (time.Time{}) || calEv.from.Format("2006-01-02") != last.Format("2006-01-02") {
-			// Different day from last event
-
-			msg += fmt.Sprintf("\n%s\n", calEv.from.Format("Monday 2 Januari"))
-		}
-
-		msg += fmt.Sprintf("%s - %s: %s\n", calEv.from.Format("15:04"), calEv.to.Format("15:04"), calEv.text)
-
-		last = calEv.from
-	}
-
-	return sendMessage(cli, roomID, msg)
-}
-
-func cmdAddCalendar(cli *mautrix.Client, u *user, roomID id.RoomID, args []string) error {
-	if len(args) < 2 {
-		sendMessage(cli, roomID, "Provide the URI")
-		// TODO: Improve message
-		return nil
-	}
-
-	uri := args[1]
-
-	_, err := newCalDavCalendar(uri)
-	if err != nil {
-		sendMessage(cli, roomID, "Specified URI is not a supported CalDAV calendar")
-		fmt.Println(err)
-		return nil
-	}
-
-	return u.addCalendar(uri)
-}
-
-func sendMessage(cli *mautrix.Client, roomID id.RoomID, msg string) error {
-	_, err := cli.SendMessageEvent(roomID, event.EventMessage, event.MessageEventContent{
-		Body: msg,
-	})
+	_, err := cli.SendMessageEvent(roomID, event.EventMessage, ev)
 	return err
 }
 

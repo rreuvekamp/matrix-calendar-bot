@@ -62,7 +62,7 @@ func main() {
 
 func setupReminderTimers(cli *mautrix.Client, data *store) {
 	send := func(ev calendarEvent) {
-		sendMessage(cli, id.RoomID("!qvPycavGoabBgSxiDz:remi.im"), "Reminder for: "+ev.text)
+		sendMessage(cli, id.RoomID("!qvPycavGoabBgSxiDz:remi.im"), "Reminder for: "+ev.text, "")
 	}
 
 	for _, user := range data.users {
