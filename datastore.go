@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -82,7 +83,7 @@ func (u *user) addCalendar(uri string) error {
 
 	u.mutex.Lock()
 	u.calendars = append(u.calendars, uc)
-	u.mutex.RUnlock()
+	u.mutex.Unlock()
 
 	return nil
 }
@@ -164,7 +165,12 @@ func (uc *userCalendar) calendar() (calendar, error) {
 
 	var err error
 	if uc.cal == nil {
-		uc.cal, err = newCalDavCalendar(uc.URI)
+		if strings.Contains(uc.URI, "ics") {
+			uc.cal, err = newICalCalendar(uc.URI)
+		} else {
+			uc.cal, err = newCalDavCalendar(uc.URI)
+		}
+
 	}
 
 	return uc.cal, err

@@ -14,7 +14,7 @@ type cmdReply struct {
 	msgF string
 }
 
-func handleCommand(cli *mautrix.Client, data *store, ev *event.Event) (reply []cmdReply) {
+func handleCommand(cli *mautrix.Client, data *store, ev *event.Event) (replies []cmdReply) {
 	var err error
 
 	str := strings.TrimSpace(ev.Content.AsMessage().Body)
@@ -28,30 +28,39 @@ func handleCommand(cli *mautrix.Client, data *store, ev *event.Event) (reply []c
 	ud, err := data.user(ev.Sender)
 	if err != nil {
 		fmt.Println(err)
-		reply = append(reply, cmdReply{
+		replies = append(replies, cmdReply{
 			"Oops, something went wrong", ""})
 		return
 	}
 
-	var msg string
-	var msgF string
+	var reply cmdReply
 	switch args[0] {
 	case "events", "week":
-		msg, err = cmdListEvents(ud)
+		reply.msg, err = cmdListEvents(ud)
 	case "cal", "calendar":
-		msg, err = cmdAddCalendar(ud, args)
+		if len(args) < 2 {
+			reply = formatHelp(helpCal)
+			break
+		}
+
+		switch args[1] {
+		case "add":
+			reply, err = cmdCalendarAdd(ud, args)
+		default:
+			reply = formatHelp(helpCal)
+		}
 	case "help":
-		msg, msgF = cmdHelp()
+		reply = formatAllHelp()
 	default:
-		msg = "Unknown command"
+		reply.msg = "Unknown command"
 	}
 
-	if msg != "" {
-		reply = append(reply, cmdReply{msg, msgF})
+	if reply.msg != "" {
+		replies = append(replies, reply)
 	}
 
 	if err != nil {
-		reply = append(reply, cmdReply{
+		replies = append(replies, cmdReply{
 			"Oops, something went wrong", ""})
 		fmt.Println(err)
 	}
@@ -60,7 +69,7 @@ func handleCommand(cli *mautrix.Client, data *store, ev *event.Event) (reply []c
 }
 
 func cmdListEvents(u *user) (string, error) {
-	cal, err := u.calendars[0].calendar()
+	cal, err := u.combinedCalendar()
 	if err != nil {
 		return "", err
 	}
@@ -94,21 +103,23 @@ func cmdListEvents(u *user) (string, error) {
 	return msg, nil
 }
 
-func cmdAddCalendar(u *user, args []string) (string, error) {
-	if len(args) < 2 {
-		return "Provide the URI", nil
+func cmdCalendarAdd(u *user, args []string) (cmdReply, error) {
+	if len(args) < 4 {
+		return formatUsage(usageCalAdd), nil
 		// TODO: Improve message
 	}
 
-	uri := args[1]
+	//name := args[2]
 
-	_, err := newCalDavCalendar(uri)
+	uri := args[3]
+
+	_, err := newICalCalendar(uri)
 	if err != nil {
 		fmt.Println(err)
-		return "Specified URI is not a supported CalDAV calendar", nil
+		return cmdReply{"Specified URI is not a supported CalDAV calendar", ""}, nil
 	}
 
-	return "Calendar added", u.addCalendar(uri)
+	return cmdReply{"Calendar added", ""}, u.addCalendar(uri)
 }
 
 type helpSection struct {
@@ -118,51 +129,69 @@ type helpSection struct {
 }
 
 type helpCommand struct {
-	cmd  string
-	info string
+	cmd     string
+	info    string
+	example string
 }
 
-var help = []helpSection{
-	{
-		"Managing your calendars",
-		[]helpCommand{
-			{"cal", "List your calendars"},
-			{"cal add {name} {uri}", "Add a caldav calendar by name and URI"},
-			{"cal remove {name}", "Remove the caldav calendar by name"},
-		},
+var helpCal = helpSection{
+	"Managing your calendars",
+	[]helpCommand{
+		{"cal", "List your calendars", ""},
+		{"cal add {name} {uri}", "Add a CalDav calendar by name and URI", ""},
+		{"cal remove {name}", "Remove the CalDav calendar by name", ""},
 	},
-	{
-		"Viewing events in your calendars",
-		[]helpCommand{
-			{"week", "View your schedule for this week"},
-		},
+}
+var helpView = helpSection{
+	"Viewing events in your calendars",
+	[]helpCommand{
+		{"week", "View your schedule for this week", ""},
 	},
 }
 
-func cmdHelp() (string, string) {
+func formatAllHelp() cmdReply {
 	lines := []string{}
 	linesF := []string{}
 
-	for i, s := range help {
-		if i > 0 {
-			lines = append(lines, "")
-			linesF = append(linesF, "")
-		}
-		lines = append(lines, s.title)
-		linesF = append(linesF, "<b>"+s.title+"</b><br />")
-
-		linesF = append(linesF, "<ul>")
-
-		for _, c := range s.cmds {
-			msg := fmt.Sprintf("* %s  %s", c.cmd, c.info)
-			msgF := fmt.Sprintf("<li>%s&nbsp;&nbsp;-&nbsp;&nbsp;%s</li>", c.cmd, c.info)
-
-			lines = append(lines, msg)
-			linesF = append(linesF, msgF)
-		}
-
-		linesF = append(linesF, "</ul>")
+	for _, s := range []helpSection{helpCal, helpView} {
+		reply := formatHelp(s)
+		lines = append(lines, reply.msg)
+		linesF = append(linesF, reply.msgF)
 	}
 
-	return strings.Join(lines, "\n"), strings.Join(linesF, "\n")
+	return cmdReply{strings.Join(lines, "\n"), strings.Join(linesF, "\n")}
+}
+
+func formatHelp(help helpSection) cmdReply {
+	lines := []string{}
+	linesF := []string{}
+
+	lines = append(lines, help.title)
+	linesF = append(linesF, "<b>"+help.title+"</b><br />")
+
+	linesF = append(linesF, "<ul>")
+
+	for _, c := range help.cmds {
+		msg := fmt.Sprintf("* %s  %s", c.cmd, c.info)
+		msgF := fmt.Sprintf("<li>%s&nbsp;&nbsp;-&nbsp;&nbsp;%s</li>", c.cmd, c.info)
+
+		lines = append(lines, msg)
+		linesF = append(linesF, msgF)
+	}
+
+	linesF = append(linesF, "</ul>")
+
+	return cmdReply{strings.Join(lines, "\n"), strings.Join(linesF, "\n")}
+}
+
+var usageCalAdd = helpCommand{
+	"cal add {name} {uri}",
+	"Add a CalDav calendar by specifying the CalDav URI and a calendar name of your choice",
+	"cal add ",
+}
+
+func formatUsage(usage helpCommand) cmdReply {
+	msg := fmt.Sprintf("Usage: %s\n%s", usage.cmd, usage.info)
+	msgF := fmt.Sprintf("<b>Usage</b>: %s<br />\n%s", usage.cmd, usage.info)
+	return cmdReply{msg, msgF}
 }
