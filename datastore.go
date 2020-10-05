@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -69,23 +70,51 @@ type user struct {
 	calendars      []userCalendar
 }
 
-func (u *user) addCalendar(uri string) error {
+func (u *user) addCalendar(name string, calType calendarType, uri string) error {
 	u.mutex.RLock()
-	id := u.userID
+	userID := u.userID
 	u.mutex.RUnlock()
 
-	dbid, err := u.persist.addCalendar(id, uri)
+	dbid, err := u.persist.addCalendar(userID, name, calType, uri)
 	if err != nil {
 		return err
 	}
 
-	uc := userCalendar{DBID: dbid, URI: uri}
+	uc := userCalendar{DBID: dbid, Name: name, CalType: calType, URI: uri}
 
 	u.mutex.Lock()
 	u.calendars = append(u.calendars, uc)
 	u.mutex.Unlock()
 
 	return nil
+}
+
+var errCalendarNotExists = errors.New("calendar doesn't exist")
+
+func (u *user) removeCalendar(name string) error {
+	found := 0
+
+	u.calendarsMutex.RLock()
+	userID := u.userID
+	for i, cal := range u.calendars {
+		if cal.Name != name {
+			continue
+		}
+
+		found = i
+		break
+	}
+	u.calendarsMutex.RUnlock()
+
+	if found == 0 {
+		return errCalendarNotExists
+	}
+
+	u.calendarsMutex.Lock()
+	u.calendars = append(u.calendars[:found], u.calendars[found+1:]...)
+	u.calendarsMutex.Unlock()
+
+	return u.persist.removeCalendar(userID, name)
 }
 
 func (u *user) combinedCalendar() (calendar, error) {
@@ -104,6 +133,20 @@ func (u *user) combinedCalendar() (calendar, error) {
 	}
 
 	return combinedCalendar(cals), nil
+}
+
+func (u *user) hasCalendar(name string) bool {
+	u.calendarsMutex.RLock()
+	defer u.calendarsMutex.RUnlock()
+	for _, cal := range u.calendars {
+		if cal.Name != name {
+			continue
+		}
+
+		return true
+	}
+
+	return false
 }
 
 func (u *user) setupReminderTimer(send func(calendarEvent)) error {
@@ -152,9 +195,11 @@ func (u *user) setupReminderTimer(send func(calendarEvent)) error {
 type userCalendar struct {
 	mutex sync.RWMutex
 
-	DBID   int64
-	UserID id.UserID
-	URI    string
+	DBID    int64
+	UserID  id.UserID
+	Name    string
+	CalType calendarType
+	URI     string
 
 	cal calendar
 }

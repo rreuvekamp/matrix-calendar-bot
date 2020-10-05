@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -115,8 +116,15 @@ func (cal *iCalCalendar) events(from time.Time, until time.Time) (calendarEvents
 
 type combinedCalendar []calendar
 
+var errNoCalendars = errors.New("no calendars")
+
 func (cals combinedCalendar) events(from time.Time, until time.Time) (calendarEvents, error) {
 	var events []calendarEvent
+
+	if len(cals) == 0 {
+		return events, errNoCalendars
+	}
+
 	for _, cal := range cals {
 		evs, err := cal.events(from, until)
 		if err != nil {
@@ -131,6 +139,13 @@ func (cals combinedCalendar) events(from time.Time, until time.Time) (calendarEv
 
 	return events, nil
 }
+
+type calendarType string
+
+var (
+	calendarTypeCalDav = calendarType("caldav")
+	calendarTypeICal   = calendarType("ical")
+)
 
 // calendarEvents implements sort.Interface
 type calendarEvents []calendarEvent
