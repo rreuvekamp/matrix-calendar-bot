@@ -89,7 +89,11 @@ func newICalCalendar(url string) (*iCalCalendar, error) {
 
 	client := caldav.NewDefaultClient(server)
 
-	return &iCalCalendar{client: client}, nil
+	cal := &iCalCalendar{client: client}
+
+	_, err = cal.events(time.Now(), time.Now())
+
+	return cal, err
 }
 
 func (cal *iCalCalendar) events(from time.Time, until time.Time) (calendarEvents, error) {
@@ -99,7 +103,7 @@ func (cal *iCalCalendar) events(from time.Time, until time.Time) (calendarEvents
 	}
 	resp, err := cal.client.Do(req)
 	if err != nil {
-		fmt.Println(err)
+		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("cannot fetch ical file, status code: %d", resp.StatusCode)

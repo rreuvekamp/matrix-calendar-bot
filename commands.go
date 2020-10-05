@@ -281,13 +281,13 @@ func formatHelp(help helpSection) cmdReply {
 
 var usageCalAdd = helpCommand{
 	"cal add {name} {type} {address}",
-	"Add a CalDav calendar by chosing a name, specifying the type (caldav or ical) and specifying the address",
+	"Add a CalDav calendar by choosing a name, specifying the type (caldav or ical) and specifying the address",
 	"cal add personal caldav https://mysite.nl/calendar/3owevfu1d0rb3psw",
 }
 
 var usageCalRemove = helpCommand{
 	"cal remove {name}",
-	"Remove specified calendar from the bridge",
+	"Remove the specified calendar from the bot",
 	"",
 }
 
@@ -295,8 +295,8 @@ func formatUsage(usage helpCommand) cmdReply {
 	msg := fmt.Sprintf("Usage: %s\n%s", usage.cmd, usage.info)
 	msgF := fmt.Sprintf("<b>Usage</b>: %s<br />\n%s", usage.cmd, usage.info)
 	if usage.example != "" {
-		msg += "\nExample: " + usage.example
-		msgF += "<br />\n<b>Example</b>: " + usage.example
+		msg += "\n\nExample: " + usage.example
+		msgF += "<br />\n<br />\n<b>Example</b>: " + usage.example
 	}
 	return cmdReply{msg, msgF}
 }
