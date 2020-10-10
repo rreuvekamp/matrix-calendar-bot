@@ -144,6 +144,58 @@ func (cals combinedCalendar) events(from time.Time, until time.Time) (calendarEv
 	return events, nil
 }
 
+type eventDay struct {
+	dayStr string
+	day    time.Time
+	events []calendarEvent
+}
+
+func (evs calendarEvents) format() []*eventDay {
+	days := []*eventDay{}
+	for _, ev := range evs {
+
+		cur := ev.from
+		fromStr := ev.from.Format("2006-01-02")
+		toStr := ev.to.Format("2006-01-02")
+		for {
+			curStr := cur.Format("2006-01-02")
+
+			var thisDay *eventDay
+			for i, day := range days {
+				if day.dayStr == curStr {
+					thisDay = days[i]
+					break
+				}
+			}
+			if thisDay == nil {
+				thisDay = &eventDay{dayStr: curStr, day: cur}
+				days = append(days, thisDay)
+			}
+
+			evCp := ev
+
+			if fromStr != toStr {
+				if fromStr != curStr {
+					evCp.from = time.Date(evCp.from.Year(), evCp.from.Month(), evCp.from.Day(), 0, 0, 0, 0, evCp.from.Location())
+				}
+				if toStr != curStr {
+					evCp.to = time.Date(evCp.to.Year(), evCp.to.Month(), evCp.to.Day(), 0, 0, 0, 0, evCp.to.Location())
+				}
+			}
+
+			thisDay.events = append(thisDay.events, evCp)
+
+			if cur.Format("2006-01-02") == ev.to.Format("2006-01-02") {
+				break
+			}
+
+			cur = cur.AddDate(0, 0, 1)
+		}
+	}
+
+	return days
+}
+
 type calendarType string
 
 var (

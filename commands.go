@@ -36,7 +36,9 @@ func handleCommand(cli *mautrix.Client, data *store, ev *event.Event) (replies [
 	var reply cmdReply
 	switch args[0] {
 	case "events", "week":
-		reply.msg, err = cmdListEvents(ud)
+		reply, err = cmdListEvents(ud, "week")
+	case "today":
+		reply, err = cmdListEvents(ud, "today")
 	case "cal", "calendar":
 		if len(args) < 2 {
 			reply = cmdCalendarList(ud)
@@ -75,42 +77,63 @@ func handleCommand(cli *mautrix.Client, data *store, ev *event.Event) (replies [
 	return
 }
 
-func cmdListEvents(u *user) (string, error) {
+func cmdListEvents(u *user, period string) (cmdReply, error) {
 	cal, err := u.combinedCalendar()
 	if err != nil {
-		return "", err
+		return cmdReply{}, err
 	}
 
 	now := time.Now()
-	startOfWeek := time.Date(now.Year(), now.Month(), now.Day()-int(now.Weekday())+1, 0, 0, 0, 0, now.Location())
-	endOfWeek := startOfWeek
-	endOfWeek = endOfWeek.Add(7 * 24 * time.Hour)
+	from := time.Time{}
+	to := time.Time{}
 
-	events, err := cal.events(startOfWeek, endOfWeek)
+	loc := now.Location() // TODO: loc should be depending on user.
+
+	switch period {
+	case "today":
+		from = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+		to = time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, loc)
+	default:
+		from = time.Date(now.Year(), now.Month(), now.Day()-int(now.Weekday())+1, 0, 0, 0, 0, loc)
+		to = time.Date(now.Year(), now.Month(), from.Day()+7, 0, 0, 0, 0, loc)
+	}
+	fmt.Println(from, to)
+
+	events, err := cal.events(from, to)
 	if err != nil {
 		if err == errNoCalendars {
-			return "You haven't configured any calendars. Use the 'cal add' command to start.", nil
+			return cmdReply{"You haven't configured any calendars. Use the 'cal add' command to start.", ""}, nil
 		}
-		return "", err
+		return cmdReply{}, err
 	}
 
 	// TODO: Properly handle multi-day events.
 
-	msg := ""
-	last := time.Time{}
-	for _, calEv := range events {
-		if last == (time.Time{}) || calEv.from.Format("2006-01-02") != last.Format("2006-01-02") {
-			// Different day from last event
+	lines := []string{}
+	linesF := []string{}
 
-			msg += fmt.Sprintf("\n%s\n", calEv.from.Format("Monday 2 Januari"))
+	days := events.format()
+	for i, day := range days {
+		if to.Before(day.day) {
+			continue
 		}
 
-		msg += fmt.Sprintf("%s - %s: %s\n", calEv.from.Format("15:04"), calEv.to.Format("15:04"), calEv.text)
+		if i > 0 {
+			lines = append(lines, "")
+			linesF = append(linesF, "")
+		}
 
-		last = calEv.from
+		header := day.day.Format("Monday 2 January")
+		lines = append(lines, fmt.Sprintf("%s", header))
+		linesF = append(linesF, fmt.Sprintf("<b>%s</b>", header))
+
+		for _, ev := range day.events {
+			lines = append(lines, fmt.Sprintf("%s - %s: %s", ev.from.Format("15:04"), ev.to.Format("15:04"), ev.text))
+			linesF = append(linesF, fmt.Sprintf("<code>%s - %s</code>: %s", ev.from.Format("15:04"), ev.to.Format("15:04"), ev.text))
+		}
 	}
 
-	return msg, nil
+	return cmdReply{strings.Join(lines, "\n"), strings.Join(linesF, "<br />")}, nil
 }
 
 func cmdCalendarRemove(u *user, args []string) (cmdReply, error) {
@@ -269,8 +292,8 @@ func formatHelp(help helpSection) cmdReply {
 	linesF = append(linesF, "<b>"+help.title+"</b>")
 
 	for _, c := range help.cmds {
-		msg := fmt.Sprintf("* %s  %s", c.cmd, c.info)
-		msgF := fmt.Sprintf("&nbsp;&#9702; %s&nbsp;&nbsp;-&nbsp;&nbsp;%s", c.cmd, c.info)
+		msg := fmt.Sprintf("* %s - %s", c.cmd, c.info)
+		msgF := fmt.Sprintf("&nbsp;&#9702; <code>%s</code>&nbsp;&nbsp;-&nbsp;&nbsp;%s", c.cmd, c.info)
 
 		lines = append(lines, msg)
 		linesF = append(linesF, msgF)
@@ -281,7 +304,7 @@ func formatHelp(help helpSection) cmdReply {
 
 var usageCalAdd = helpCommand{
 	"cal add {name} {type} {address}",
-	"Add a CalDav calendar by choosing a name, specifying the type (caldav or ical) and specifying the address",
+	"Add a calendar by choosing a name, and specifying the type (caldav or ical) and webaddress",
 	"cal add personal caldav https://mysite.nl/calendar/3owevfu1d0rb3psw",
 }
 
