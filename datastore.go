@@ -187,6 +187,10 @@ func (u *user) setupReminderTimer(send func(calendarEvent)) error {
 			send(ev)
 			fmt.Println("Reminder for: " + ev.text)
 		}
+
+		u.mutex.Lock()
+		u.timerQuit = nil
+		u.mutex.Unlock()
 	}()
 
 	return nil

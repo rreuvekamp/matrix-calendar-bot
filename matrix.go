@@ -25,7 +25,7 @@ func initMatrixBot(cfg configMatrixBot, data *store) (*mautrix.Client, error) {
 
 		reply := handleCommand(cli, data, ev)
 		for _, msg := range reply {
-			sendMessage(cli, ev.RoomID, msg.msg, msg.msgF)
+			sendNotice(cli, ev.RoomID, msg.msg, msg.msgF)
 		}
 	})
 	syncer.OnEventType(event.StateMember, func(_ mautrix.EventSource, ev *event.Event) {
@@ -64,9 +64,17 @@ func initMatrixBot(cfg configMatrixBot, data *store) (*mautrix.Client, error) {
 	return cli, nil
 }
 
+func sendNotice(cli *mautrix.Client, roomID id.RoomID, msg string, msgF string) error {
+	return sendMatrixMessage(cli, roomID, msg, msgF, event.MsgNotice)
+}
+
 func sendMessage(cli *mautrix.Client, roomID id.RoomID, msg string, msgF string) error {
+	return sendMatrixMessage(cli, roomID, msg, msgF, event.MsgText)
+}
+
+func sendMatrixMessage(cli *mautrix.Client, roomID id.RoomID, msg string, msgF string, eventType event.MessageType) error {
 	ev := event.MessageEventContent{
-		MsgType: event.MsgNotice,
+		MsgType: eventType,
 		Body:    msg,
 	}
 	if msgF != "" {

@@ -68,7 +68,12 @@ func setupReminderTimers(cli *mautrix.Client, data *store) {
 	for _, user := range data.users {
 		go func() {
 			for {
-				user.setupReminderTimer(send)
+				fmt.Println("call setup reminder timers")
+				err := user.setupReminderTimer(send)
+				if err != nil {
+					fmt.Println(err)
+				}
+				fmt.Println("done call setup reminder timers")
 				<-time.After(30 * time.Minute)
 			}
 		}()
