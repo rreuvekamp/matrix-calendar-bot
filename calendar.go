@@ -2,12 +2,12 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/apognu/gocal"
 	"github.com/dolanor/caldav-go/caldav"
 	"github.com/dolanor/caldav-go/icalendar/components"
 )
@@ -78,44 +78,56 @@ func parseCaldavEvents(evs []*components.Event, from, until time.Time) calendarE
 }
 
 type iCalCalendar struct {
-	client *caldav.Client
+	url string
 }
 
 func newICalCalendar(url string) (*iCalCalendar, error) {
-	server, err := caldav.NewServer(url)
-	if err != nil {
-		return nil, err
-	}
-
-	client := caldav.NewDefaultClient(server)
-
-	cal := &iCalCalendar{client: client}
-
-	_, err = cal.events(time.Now(), time.Now())
-
-	return cal, err
+	return &iCalCalendar{url}, nil
 }
 
 func (cal *iCalCalendar) events(from time.Time, until time.Time) (calendarEvents, error) {
-	req, err := cal.client.Server().NewRequest("GET", "")
-	if err != nil {
-		return nil, err
-	}
-	resp, err := cal.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("cannot fetch ical file, status code: %d", resp.StatusCode)
-	}
-
-	calendar := components.Calendar{}
-	err = resp.Decode(&calendar)
+	// TODO: user agent
+	resp, err := http.Get(cal.url)
+	defer resp.Body.Close()
 	if err != nil {
 		return nil, err
 	}
 
-	return parseCaldavEvents(calendar.Events, from, until), nil
+	c := gocal.NewParser(resp.Body)
+	c.Start, c.End = &from, &until
+	c.Parse()
+
+	events := []calendarEvent{}
+
+	for _, ev := range c.Events {
+		/*if ev.Start == nil {
+			continue
+		}
+
+		if from != (time.Time{}) && ev.Start.Before(from) {
+			continue
+		}
+
+		if until != (time.Time{}) && until.Before(*ev.Start) {
+			continue
+		}*/
+
+		event := calendarEvent{
+			from: *ev.Start,
+			to:   *ev.Start,
+			text: ev.Summary,
+		}
+
+		if ev.End != nil {
+			event.to = *ev.End
+		}
+
+		events = append(events, event)
+	}
+
+	sort.Sort(calendarEvents(events))
+
+	return events, nil
 }
 
 type combinedCalendar []calendar

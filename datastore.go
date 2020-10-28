@@ -80,7 +80,7 @@ func (u *user) addCalendar(name string, calType calendarType, uri string) error 
 		return err
 	}
 
-	uc := userCalendar{DBID: dbid, Name: name, CalType: calType, URI: uri}
+	uc := userCalendar{DBID: dbid, Name: name, CalType: calType, URI: uri, mutex: &sync.RWMutex{}}
 
 	u.mutex.Lock()
 	u.calendars = append(u.calendars, uc)
@@ -197,7 +197,7 @@ func (u *user) setupReminderTimer(send func(calendarEvent)) error {
 }
 
 type userCalendar struct {
-	mutex sync.RWMutex
+	mutex *sync.RWMutex
 
 	DBID    int64
 	UserID  id.UserID

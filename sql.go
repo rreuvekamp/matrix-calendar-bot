@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"sync"
 
 	_ "github.com/mattn/go-sqlite3"
 	"maunium.net/go/mautrix/id"
@@ -85,7 +86,7 @@ func (d *sqlDB) fetchCalendars(userID id.UserID) ([]userCalendar, error) {
 func rowsToCalendars(rows *sql.Rows) ([]userCalendar, error) {
 	cals := []userCalendar{}
 	for rows.Next() {
-		cal := userCalendar{}
+		cal := userCalendar{mutex: &sync.RWMutex{}}
 		var userID string
 		var calTypeStr string
 		err := rows.Scan(&cal.DBID, &userID, &cal.Name, &calTypeStr, &cal.URI)
