@@ -52,7 +52,9 @@ func main() {
 
 	fmt.Println("Setting up reminder timers...")
 
-	setupReminderTimers(m, data)
+	if true {
+		setupReminderTimers(m, data)
+	}
 
 	fmt.Println("Done")
 
@@ -68,12 +70,12 @@ func setupReminderTimers(m matrixBot, data *store) {
 		go func() {
 			for {
 				fmt.Println("call setup reminder timers")
-				err := user.setupReminderTimer(send)
+				err := user.setupReminderTimer(send, time.Now().Add(65*time.Minute))
 				if err != nil {
 					fmt.Println(err)
 				}
 				fmt.Println("done call setup reminder timers")
-				<-time.After(30 * time.Minute)
+				<-time.After(60 * time.Minute)
 			}
 		}()
 		<-time.After(100 * time.Millisecond)

@@ -100,17 +100,19 @@ func (cal *iCalCalendar) events(from time.Time, until time.Time) (calendarEvents
 	events := []calendarEvent{}
 
 	for _, ev := range c.Events {
-		/*if ev.Start == nil {
+		if (from != time.Time{}) && ev.Start == nil {
 			continue
 		}
 
+		// (This is not duplicate from gocal's own c.Start.
+		//  That will also include events which are active on time from,
+		//  while we are only interested in events which start on or after time from)
 		if from != (time.Time{}) && ev.Start.Before(from) {
 			continue
 		}
-
 		if until != (time.Time{}) && until.Before(*ev.Start) {
 			continue
-		}*/
+		}
 
 		event := calendarEvent{
 			from: *ev.Start,

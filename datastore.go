@@ -201,7 +201,7 @@ func (u *user) hasCalendar(name string) bool {
 	return false
 }
 
-func (u *user) setupReminderTimer(send func(calendarEvent, id.RoomID)) error {
+func (u *user) setupReminderTimer(send func(calendarEvent, id.RoomID), until time.Time) error {
 	u.calendarsMutex.RLock()
 	cal, err := u.combinedCalendar()
 	u.calendarsMutex.RUnlock()
@@ -210,7 +210,7 @@ func (u *user) setupReminderTimer(send func(calendarEvent, id.RoomID)) error {
 		return err
 	}
 
-	evs, err := cal.events(time.Now(), time.Now().Add(5*time.Hour))
+	evs, err := cal.events(time.Now(), until)
 	if err != nil {
 		return err
 	}

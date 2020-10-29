@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,9 +51,53 @@ func handleCommand(cli *mautrix.Client, data *store, ev *event.Event) (replies [
 	var reply cmdReply
 	switch args[0] {
 	case "events", "week":
-		reply, err = cmdListEvents(ud, "week")
+		yearNum := 0
+		weekNum := 0
+
+		var yearErr error
+		var weekErr error
+
+		if len(args) >= 2 {
+			if len(args) >= 3 {
+				yearNum, yearErr = strconv.Atoi(args[1])
+				weekNum, weekErr = strconv.Atoi(args[2])
+			} else {
+				weekNum, weekErr = strconv.Atoi(args[1])
+			}
+		}
+
+		if yearErr != nil || weekErr != nil {
+			if yearErr != nil {
+				replies = append(replies, cmdReply{"Invalid year specified", ""})
+			}
+			if weekErr != nil {
+				replies = append(replies, cmdReply{"Invalid week specified", ""})
+			}
+			break
+		}
+
+		reply, err = cmdListEvents(ud, "week", yearNum, weekNum)
 	case "today":
-		reply, err = cmdListEvents(ud, "today")
+		reply, err = cmdListEvents(ud, "today", 0, 0)
+	case "next":
+		if len(args) < 2 {
+			reply = cmdReply{"Next what? 'next week'?", ""}
+			break
+		}
+		switch args[1] {
+		case "week":
+			reply, err = cmdListEvents(ud, "nextweek", 0, 0)
+		}
+	case "last", "prev", "previous":
+		if len(args) < 2 {
+			reply = cmdReply{"Last what? 'last week'?", ""}
+			break
+		}
+
+		switch args[1] {
+		case "week":
+			reply, err = cmdListEvents(ud, "lastweek", 0, 0)
+		}
 	case "cal", "calendar":
 		if len(args) < 2 {
 			reply = cmdCalendarList(ud)
@@ -91,7 +136,7 @@ func handleCommand(cli *mautrix.Client, data *store, ev *event.Event) (replies [
 	return
 }
 
-func cmdListEvents(u *user, period string) (cmdReply, error) {
+func cmdListEvents(u *user, period string, year int, week int) (cmdReply, error) {
 	cal, err := u.combinedCalendar()
 	if err != nil {
 		return cmdReply{}, err
@@ -103,14 +148,29 @@ func cmdListEvents(u *user, period string) (cmdReply, error) {
 
 	loc := now.Location() // TODO: loc should be depending on user.
 
+	daysFromToTo := 7
 	switch period {
 	case "today":
-		from = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
-		to = time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, loc)
+		from = timeStartOfToday(now, loc)
+		fmt.Println(from)
+		daysFromToTo = 1
+	case "nextweek":
+		from = timeStartOfWeek(now, loc).AddDate(0, 0, 7)
+	case "lastweek":
+		from = timeStartOfWeek(now, loc).AddDate(0, 0, -7)
 	default:
-		from = time.Date(now.Year(), now.Month(), now.Day()-int(now.Weekday())+1, 0, 0, 0, 0, loc)
-		to = time.Date(now.Year(), now.Month(), from.Day()+7, 0, 0, 0, 0, loc)
+		if week == 0 {
+			from = timeStartOfWeek(now, loc)
+		} else {
+			if year == 0 {
+				year = now.Year()
+			}
+			from = timeStartOfYearPlusWeeks(year, loc, week)
+		}
 	}
+
+	to = time.Date(from.Year(), from.Month(), from.Day()+daysFromToTo, 0, 0, 0, 0, loc)
+
 	fmt.Println(from, to)
 
 	events, err := cal.events(from, to)
@@ -125,6 +185,14 @@ func cmdListEvents(u *user, period string) (cmdReply, error) {
 
 	lines := []string{}
 	linesF := []string{}
+
+	if strings.Contains(period, "week") {
+		_, week := from.ISOWeek()
+		wk := strconv.Itoa(week)
+
+		lines = append(lines, "Week "+wk, "")
+		linesF = append(linesF, "<b>Week "+wk+"</b>", "")
+	}
 
 	days := events.format()
 	for i, day := range days {
@@ -148,6 +216,25 @@ func cmdListEvents(u *user, period string) (cmdReply, error) {
 	}
 
 	return cmdReply{strings.Join(lines, "\n"), strings.Join(linesF, "<br />")}, nil
+}
+
+func timeStartOfToday(base time.Time, loc *time.Location) time.Time {
+	return time.Date(base.Year(), base.Month(), base.Day(), 0, 0, 0, 0, loc)
+}
+
+func timeStartOfWeek(base time.Time, loc *time.Location) time.Time {
+	return time.Date(base.Year(), base.Month(), base.Day()-int(base.Weekday())+1, 0, 0, 0, 0, loc)
+}
+
+func timeStartOfYearPlusWeeks(year int, loc *time.Location, weekNumber int) time.Time {
+	tm := time.Date(year, 1, 1, 0, 0, 0, 0, loc)
+
+	addDays := (weekNumber - 1) * 7
+	addDays += int(tm.Weekday()-time.Monday) * -1
+
+	tm = tm.AddDate(0, 0, addDays)
+
+	return tm
 }
 
 func cmdCalendarRemove(u *user, args []string) (cmdReply, error) {
@@ -278,6 +365,10 @@ var helpView = helpSection{
 	"Viewing events in your calendars",
 	[]helpCommand{
 		{"week", "View your schedule for this week", ""},
+		{"week {number}", "View your schedule for the specified week", ""},
+		{"week {year} {number}", "View your schedule for the specified week", ""},
+		{"last week", "View your schedule for last week", ""},
+		{"next week", "View your schedule for next week", ""},
 	},
 }
 
