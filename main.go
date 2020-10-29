@@ -6,7 +6,6 @@ import (
 	"os"
 	"time"
 
-	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -45,7 +44,7 @@ func main() {
 
 	fmt.Println("Initialising Matrix bot...")
 
-	cli, err := initMatrixBot(cfg.MatrixBot, data)
+	m, err := initMatrixBot(cfg.MatrixBot, data)
 	if err != nil {
 		fmt.Println("Error initialising Matrix connection:", err)
 		os.Exit(3)
@@ -53,16 +52,16 @@ func main() {
 
 	fmt.Println("Setting up reminder timers...")
 
-	setupReminderTimers(cli, data)
+	setupReminderTimers(m, data)
 
 	fmt.Println("Done")
 
 	<-make(chan struct{})
 }
 
-func setupReminderTimers(cli *mautrix.Client, data *store) {
-	send := func(ev calendarEvent) {
-		sendMessage(cli, id.RoomID("!qvPycavGoabBgSxiDz:remi.im"), "Reminder for: "+ev.text, "")
+func setupReminderTimers(m matrixBot, data *store) {
+	send := func(ev calendarEvent, roomID id.RoomID) {
+		m.sendMessage(roomID, "Reminder for: "+ev.text, "")
 	}
 
 	for _, user := range data.users {

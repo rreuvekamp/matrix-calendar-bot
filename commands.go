@@ -33,6 +33,20 @@ func handleCommand(cli *mautrix.Client, data *store, ev *event.Event) (replies [
 		return
 	}
 
+	if !ud.ExistsInDB() {
+		fmt.Println("Storing room")
+		err = ud.store(ev.RoomID)
+		if err != nil {
+			fmt.Println(err)
+			replies = append(replies, cmdReply{
+				"Oops, something went wrong", ""})
+		}
+	}
+	if ev.RoomID != ud.roomID {
+		replies = append(replies, cmdReply{
+			"This is not the room we normally use. Please go to: " + string(ud.roomID), ""})
+	}
+
 	var reply cmdReply
 	switch args[0] {
 	case "events", "week":

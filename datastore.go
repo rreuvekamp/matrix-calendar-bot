@@ -26,6 +26,20 @@ func newDataStore(db *sqlDB) *store {
 }
 
 func (s *store) populateFromDB() error {
+	users, err := s.persist.fetchAllUsers()
+	if err != nil {
+		return err
+	}
+
+	for _, user := range users {
+		user.persist = s.persist
+		user.existsInDB = true
+
+		s.usersMutex.Lock()
+		s.users[user.userID] = &user
+		s.usersMutex.Unlock()
+	}
+
 	cals, err := s.persist.fetchAllCalendars()
 	if err != nil {
 		return err
@@ -61,13 +75,51 @@ func (s *store) user(id id.UserID) (*user, error) {
 }
 
 type user struct {
-	mutex     sync.RWMutex
-	userID    id.UserID
-	persist   *sqlDB
-	timerQuit chan struct{}
+	userID     id.UserID
+	roomID     id.RoomID
+	existsInDB bool
+	mutex      sync.RWMutex
 
 	calendarsMutex sync.RWMutex
 	calendars      []userCalendar
+
+	persist   *sqlDB
+	timerQuit chan struct{}
+}
+
+func (u *user) store(roomID id.RoomID) error {
+	u.mutex.RLock()
+	userID := u.userID
+	u.mutex.RUnlock()
+
+	err := u.persist.addUser(userID, roomID)
+	if err != nil {
+		return err
+	}
+
+	u.mutex.Lock()
+	u.roomID = roomID
+	u.existsInDB = true
+	u.mutex.Unlock()
+
+	return nil
+}
+
+func (u *user) storeRoomID(roomID id.RoomID) error {
+	u.mutex.RLock()
+	userID := u.userID
+	u.mutex.RUnlock()
+
+	err := u.persist.updateUserRoomID(userID, roomID)
+	if err != nil {
+		return err
+	}
+
+	u.mutex.Lock()
+	u.roomID = roomID
+	u.mutex.Unlock()
+
+	return nil
 }
 
 func (u *user) addCalendar(name string, calType calendarType, uri string) error {
@@ -149,7 +201,7 @@ func (u *user) hasCalendar(name string) bool {
 	return false
 }
 
-func (u *user) setupReminderTimer(send func(calendarEvent)) error {
+func (u *user) setupReminderTimer(send func(calendarEvent, id.RoomID)) error {
 	u.calendarsMutex.RLock()
 	cal, err := u.combinedCalendar()
 	u.calendarsMutex.RUnlock()
@@ -184,7 +236,7 @@ func (u *user) setupReminderTimer(send func(calendarEvent)) error {
 				return
 			case <-time.After(time.Until(ev.from)):
 			}
-			send(ev)
+			send(ev, u.RoomID())
 			fmt.Println("Reminder for: " + ev.text)
 		}
 
@@ -194,6 +246,18 @@ func (u *user) setupReminderTimer(send func(calendarEvent)) error {
 	}()
 
 	return nil
+}
+
+func (u *user) ExistsInDB() bool {
+	u.mutex.RLock()
+	defer u.mutex.RUnlock()
+	return u.existsInDB
+}
+
+func (u *user) RoomID() id.RoomID {
+	u.mutex.RLock()
+	defer u.mutex.RUnlock()
+	return u.roomID
 }
 
 type userCalendar struct {

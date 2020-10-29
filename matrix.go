@@ -9,11 +9,16 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
-func initMatrixBot(cfg configMatrixBot, data *store) (*mautrix.Client, error) {
+type matrixBot struct {
+	cli *mautrix.Client
+}
+
+func initMatrixBot(cfg configMatrixBot, data *store) (matrixBot, error) {
 	us := id.UserID(cfg.AccountID)
 	cli, err := mautrix.NewClient(cfg.Homeserver, us, cfg.Token)
+	m := matrixBot{cli}
 	if err != nil {
-		return nil, err
+		return m, err
 	}
 
 	syncer := cli.Syncer.(*mautrix.DefaultSyncer)
@@ -25,7 +30,7 @@ func initMatrixBot(cfg configMatrixBot, data *store) (*mautrix.Client, error) {
 
 		reply := handleCommand(cli, data, ev)
 		for _, msg := range reply {
-			sendNotice(cli, ev.RoomID, msg.msg, msg.msgF)
+			m.sendNotice(ev.RoomID, msg.msg, msg.msgF)
 		}
 	})
 	syncer.OnEventType(event.StateMember, func(_ mautrix.EventSource, ev *event.Event) {
@@ -61,18 +66,18 @@ func initMatrixBot(cfg configMatrixBot, data *store) (*mautrix.Client, error) {
 		}
 	}()
 
-	return cli, nil
+	return m, nil
 }
 
-func sendNotice(cli *mautrix.Client, roomID id.RoomID, msg string, msgF string) error {
-	return sendMatrixMessage(cli, roomID, msg, msgF, event.MsgNotice)
+func (m matrixBot) sendNotice(roomID id.RoomID, msg string, msgF string) error {
+	return m.sendMatrixMessage(roomID, msg, msgF, event.MsgNotice)
 }
 
-func sendMessage(cli *mautrix.Client, roomID id.RoomID, msg string, msgF string) error {
-	return sendMatrixMessage(cli, roomID, msg, msgF, event.MsgText)
+func (m matrixBot) sendMessage(roomID id.RoomID, msg string, msgF string) error {
+	return m.sendMatrixMessage(roomID, msg, msgF, event.MsgText)
 }
 
-func sendMatrixMessage(cli *mautrix.Client, roomID id.RoomID, msg string, msgF string, eventType event.MessageType) error {
+func (m matrixBot) sendMatrixMessage(roomID id.RoomID, msg string, msgF string, eventType event.MessageType) error {
 	ev := event.MessageEventContent{
 		MsgType: eventType,
 		Body:    msg,
@@ -81,7 +86,7 @@ func sendMatrixMessage(cli *mautrix.Client, roomID id.RoomID, msg string, msgF s
 		ev.FormattedBody = msgF
 		ev.Format = event.FormatHTML
 	}
-	_, err := cli.SendMessageEvent(roomID, event.EventMessage, ev)
+	_, err := m.cli.SendMessageEvent(roomID, event.EventMessage, ev)
 	return err
 }
 
