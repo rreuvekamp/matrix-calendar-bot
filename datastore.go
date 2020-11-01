@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -36,7 +35,7 @@ func (s *store) populateFromDB() error {
 		user.existsInDB = true
 
 		s.usersMutex.Lock()
-		s.users[user.userID] = &user
+		s.users[user.userID] = user
 		s.usersMutex.Unlock()
 	}
 
@@ -81,7 +80,7 @@ type user struct {
 	mutex      sync.RWMutex
 
 	calendarsMutex sync.RWMutex
-	calendars      []userCalendar
+	calendars      []*userCalendar
 
 	persist   *sqlDB
 	timerQuit chan struct{}
@@ -132,10 +131,10 @@ func (u *user) addCalendar(name string, calType calendarType, uri string) error 
 		return err
 	}
 
-	uc := userCalendar{DBID: dbid, Name: name, CalType: calType, URI: uri, mutex: &sync.RWMutex{}}
+	uc := userCalendar{DBID: dbid, Name: name, CalType: calType, URI: uri}
 
 	u.mutex.Lock()
-	u.calendars = append(u.calendars, uc)
+	u.calendars = append(u.calendars, &uc)
 	u.mutex.Unlock()
 
 	return nil
@@ -169,7 +168,7 @@ func (u *user) removeCalendar(name string) error {
 	return u.persist.removeCalendar(userID, name)
 }
 
-func (u *user) combinedCalendar() (calendar, error) {
+func (u *user) combinedCalendar() (combinedCalendar, error) {
 	u.calendarsMutex.RLock()
 	defer u.calendarsMutex.RUnlock()
 
@@ -201,7 +200,7 @@ func (u *user) hasCalendar(name string) bool {
 	return false
 }
 
-func (u *user) setupReminderTimer(send func(calendarEvent, id.RoomID), until time.Time) error {
+func (u *user) setupReminderTimer(send func(*calendarEvent, id.RoomID), until time.Time) error {
 	u.calendarsMutex.RLock()
 	cal, err := u.combinedCalendar()
 	u.calendarsMutex.RUnlock()
@@ -261,7 +260,7 @@ func (u *user) RoomID() id.RoomID {
 }
 
 type userCalendar struct {
-	mutex *sync.RWMutex
+	mutex sync.RWMutex
 
 	DBID    int64
 	UserID  id.UserID
@@ -278,12 +277,15 @@ func (uc *userCalendar) calendar() (calendar, error) {
 
 	var err error
 	if uc.cal == nil {
-		if strings.Contains(uc.URI, "ics") {
+		switch uc.CalType {
+		case calendarTypeICal:
 			uc.cal, err = newICalCalendar(uc.URI)
-		} else {
+		case calendarTypeCalDav:
 			uc.cal, err = newCalDavCalendar(uc.URI)
 		}
 
+		// TODO: Cache time from config.
+		uc.cal = newCachedCalendar(uc.cal, time.Minute*5)
 	}
 
 	return uc.cal, err

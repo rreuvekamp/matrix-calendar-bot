@@ -16,6 +16,11 @@ type cmdReply struct {
 }
 
 func handleCommand(cli *mautrix.Client, data *store, ev *event.Event) (replies []cmdReply) {
+	start := time.Now()
+	defer func() {
+		fmt.Println(time.Since(start))
+	}()
+
 	var err error
 
 	str := strings.TrimSpace(ev.Content.AsMessage().Body)
@@ -194,7 +199,7 @@ func cmdListEvents(u *user, period string, year int, week int) (cmdReply, error)
 		linesF = append(linesF, "<b>Week "+wk+"</b>", "")
 	}
 
-	days := events.format()
+	days := events.formatToDays()
 	for i, day := range days {
 		if to.Before(day.day) {
 			continue

@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"sync"
 
 	_ "github.com/mattn/go-sqlite3"
 	"maunium.net/go/mautrix/id"
@@ -92,16 +91,16 @@ func (d *sqlDB) createTables() error {
 	return err
 }
 
-func (d *sqlDB) fetchAllUsers() ([]user, error) {
+func (d *sqlDB) fetchAllUsers() ([]*user, error) {
 	rows, err := d.stmtFetchAllUsers.Query()
 	defer rows.Close()
 	if err != nil {
 		return nil, err
 	}
 
-	users := []user{}
+	users := []*user{}
 	for rows.Next() {
-		user := user{}
+		user := &user{}
 		var roomID string
 		err = rows.Scan(&user.userID, &roomID)
 		if err != nil {
@@ -115,7 +114,7 @@ func (d *sqlDB) fetchAllUsers() ([]user, error) {
 	return users, nil
 }
 
-func (d *sqlDB) fetchAllCalendars() ([]userCalendar, error) {
+func (d *sqlDB) fetchAllCalendars() ([]*userCalendar, error) {
 	rows, err := d.stmtFetchAllCalendars.Query()
 	defer rows.Close()
 	if err != nil {
@@ -125,7 +124,7 @@ func (d *sqlDB) fetchAllCalendars() ([]userCalendar, error) {
 	return rowsToCalendars(rows)
 }
 
-func (d *sqlDB) fetchCalendars(userID id.UserID) ([]userCalendar, error) {
+func (d *sqlDB) fetchCalendars(userID id.UserID) ([]*userCalendar, error) {
 	rows, err := d.stmtFetchCalendars.Query(userID)
 	defer rows.Close()
 	if err != nil {
@@ -135,10 +134,10 @@ func (d *sqlDB) fetchCalendars(userID id.UserID) ([]userCalendar, error) {
 	return rowsToCalendars(rows)
 }
 
-func rowsToCalendars(rows *sql.Rows) ([]userCalendar, error) {
-	cals := []userCalendar{}
+func rowsToCalendars(rows *sql.Rows) ([]*userCalendar, error) {
+	cals := []*userCalendar{}
 	for rows.Next() {
-		cal := userCalendar{mutex: &sync.RWMutex{}}
+		cal := &userCalendar{}
 		var userID string
 		var calTypeStr string
 		err := rows.Scan(&cal.DBID, &userID, &cal.Name, &calTypeStr, &cal.URI)

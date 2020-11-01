@@ -9,20 +9,62 @@ import (
 
 	"github.com/apognu/gocal"
 	"github.com/dolanor/caldav-go/caldav"
-	"github.com/dolanor/caldav-go/icalendar/components"
 )
 
+// calendar allows fetching events.
 type calendar interface {
-	events(from time.Time, until time.Time) (calendarEvents, error)
+	events() (calendarEvents, error)
 }
 
+// calendarEvent represents a single calendar item.
 type calendarEvent struct {
 	from, to time.Time
 
 	text string
 }
 
-// calDavCalendar implements calendar
+// cachedCalendar wraps a calendar caching its events.
+type cachedCalendar struct {
+	cal    calendar
+	period time.Duration
+
+	cache       calendarEvents
+	lastUpdated time.Time
+	mutex       sync.RWMutex
+}
+
+// newCachedCalendar wrapping the given calendar, caching its events for the given period.
+func newCachedCalendar(cal calendar, period time.Duration) *cachedCalendar {
+	return &cachedCalendar{cal: cal, period: period}
+}
+
+func (cal *cachedCalendar) events() (calendarEvents, error) {
+	cal.mutex.RLock()
+	lastUpdated := cal.lastUpdated
+	cal.mutex.RUnlock()
+
+	if time.Since(lastUpdated) > cal.period || cal.cache == nil {
+		cal.mutex.Lock()
+		defer cal.mutex.Unlock()
+
+		var err error
+		cal.cache, err = cal.cal.events()
+		if err != nil {
+			return cal.cache, err
+		}
+
+		cal.lastUpdated = time.Now()
+
+		return cal.cache, err
+	}
+
+	cal.mutex.RLock()
+	defer cal.mutex.RUnlock()
+
+	return cal.cache, nil
+}
+
+// calDavCalendar implements calendar, fetches events from a caldav server.
 type calDavCalendar struct {
 	mutex  sync.Mutex
 	client *caldav.Client
@@ -40,43 +82,32 @@ func newCalDavCalendar(url string) (*calDavCalendar, error) {
 	return &calDavCalendar{client: client}, err
 }
 
-func (cal *calDavCalendar) events(from time.Time, until time.Time) (calendarEvents, error) {
+func (cal *calDavCalendar) events() (calendarEvents, error) {
 	cal.mutex.Lock()
-	calDavEvents, err := cal.client.GetEvents("")
+	evs, err := cal.client.GetEvents("")
 	cal.mutex.Unlock()
 	if err != nil {
-		return []calendarEvent{}, err
+		return []*calendarEvent{}, err
 	}
 
-	return parseCaldavEvents(calDavEvents, from, until), nil
-}
-
-func parseCaldavEvents(evs []*components.Event, from, until time.Time) calendarEvents {
-	events := []calendarEvent{}
+	events := []*calendarEvent{}
 
 	for _, ev := range evs {
-		if from != (time.Time{}) && ev.DateStart.NativeTime().Before(from) {
-			continue
-		}
-
-		if until != (time.Time{}) && until.Before(ev.DateStart.NativeTime()) {
-			continue
-		}
-
 		event := calendarEvent{
 			from: ev.DateStart.NativeTime(),
 			to:   ev.DateEnd.NativeTime(),
 			text: ev.Summary,
 		}
 
-		events = append(events, event)
+		events = append(events, &event)
 	}
 
 	sort.Sort(calendarEvents(events))
 
-	return events
+	return events, nil
 }
 
+// iCalCalendar implements calendar, fetches events from a remote ical file.
 type iCalCalendar struct {
 	url string
 }
@@ -85,7 +116,7 @@ func newICalCalendar(url string) (*iCalCalendar, error) {
 	return &iCalCalendar{url}, nil
 }
 
-func (cal *iCalCalendar) events(from time.Time, until time.Time) (calendarEvents, error) {
+func (cal *iCalCalendar) events() (calendarEvents, error) {
 	// TODO: user agent
 	resp, err := http.Get(cal.url)
 	defer resp.Body.Close()
@@ -94,37 +125,26 @@ func (cal *iCalCalendar) events(from time.Time, until time.Time) (calendarEvents
 	}
 
 	c := gocal.NewParser(resp.Body)
-	c.Start, c.End = &from, &until
 	c.Parse()
 
-	events := []calendarEvent{}
+	events := []*calendarEvent{}
 
 	for _, ev := range c.Events {
-		if (from != time.Time{}) && ev.Start == nil {
-			continue
+		var start, end time.Time
+		if ev.Start != nil {
+			start = *ev.Start
 		}
-
-		// (This is not duplicate from gocal's own c.Start.
-		//  That will also include events which are active on time from,
-		//  while we are only interested in events which start on or after time from)
-		if from != (time.Time{}) && ev.Start.Before(from) {
-			continue
-		}
-		if until != (time.Time{}) && until.Before(*ev.Start) {
-			continue
+		if ev.End != nil {
+			end = *ev.End
 		}
 
 		event := calendarEvent{
-			from: *ev.Start,
-			to:   *ev.Start,
+			from: start,
+			to:   end,
 			text: ev.Summary,
 		}
 
-		if ev.End != nil {
-			event.to = *ev.End
-		}
-
-		events = append(events, event)
+		events = append(events, &event)
 	}
 
 	sort.Sort(calendarEvents(events))
@@ -132,25 +152,29 @@ func (cal *iCalCalendar) events(from time.Time, until time.Time) (calendarEvents
 	return events, nil
 }
 
+// combinedCalendar wraps multipe calendars.
 type combinedCalendar []calendar
 
 var errNoCalendars = errors.New("no calendars")
 
+// events gives the calendarEvents from the underlying calendars which start between
+// the gives dates.
 func (cals combinedCalendar) events(from time.Time, until time.Time) (calendarEvents, error) {
-	var events []calendarEvent
+	var events []*calendarEvent
 
 	if len(cals) == 0 {
 		return events, errNoCalendars
 	}
 
 	for _, cal := range cals {
-		evs, err := cal.events(from, until)
+		evs, err := cal.events()
+		evs = evs.between(from, until)
 		if err != nil {
 			// TODO: Multierror
 			return events, err
 		}
 
-		events = append(events, []calendarEvent(evs)...)
+		events = append(events, []*calendarEvent(evs)...)
 	}
 
 	sort.Sort(calendarEvents(events))
@@ -164,7 +188,36 @@ type eventDay struct {
 	events []calendarEvent
 }
 
-func (evs calendarEvents) format() []*eventDay {
+type calendarType string
+
+var (
+	calendarTypeCalDav = calendarType("caldav")
+	calendarTypeICal   = calendarType("ical")
+)
+
+// calendarEvents implements sort.Interface
+type calendarEvents []*calendarEvent
+
+func (c calendarEvents) between(from time.Time, until time.Time) calendarEvents {
+	var events []*calendarEvent
+
+	for _, ev := range c {
+		if from != (time.Time{}) && ev.from.Before(from) {
+			continue
+		}
+
+		if until != (time.Time{}) && until.Before(ev.from) {
+			continue
+		}
+
+		events = append(events, ev)
+	}
+
+	return events
+}
+
+// formatsToDays converts the events into days, to ease printing a calendar.
+func (evs calendarEvents) formatToDays() []*eventDay {
 	days := []*eventDay{}
 	for _, ev := range evs {
 
@@ -186,7 +239,7 @@ func (evs calendarEvents) format() []*eventDay {
 				days = append(days, thisDay)
 			}
 
-			evCp := ev
+			evCp := *ev
 
 			if fromStr != toStr {
 				if fromStr != curStr {
@@ -209,16 +262,6 @@ func (evs calendarEvents) format() []*eventDay {
 
 	return days
 }
-
-type calendarType string
-
-var (
-	calendarTypeCalDav = calendarType("caldav")
-	calendarTypeICal   = calendarType("ical")
-)
-
-// calendarEvents implements sort.Interface
-type calendarEvents []calendarEvent
 
 func (c calendarEvents) Len() int {
 	return len(c)

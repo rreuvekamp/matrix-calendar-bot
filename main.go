@@ -62,7 +62,7 @@ func main() {
 }
 
 func setupReminderTimers(m matrixBot, data *store) {
-	send := func(ev calendarEvent, roomID id.RoomID) {
+	send := func(ev *calendarEvent, roomID id.RoomID) {
 		m.sendMessage(roomID, "Reminder for: "+ev.text, "")
 	}
 
