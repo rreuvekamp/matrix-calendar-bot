@@ -30,6 +30,7 @@ type cachedCalendar struct {
 
 	cache       calendarEvents
 	lastUpdated time.Time
+	cleanTimer  *time.Timer
 	mutex       sync.RWMutex
 }
 
@@ -40,10 +41,10 @@ func newCachedCalendar(cal calendar, period time.Duration) *cachedCalendar {
 
 func (cal *cachedCalendar) events() (calendarEvents, error) {
 	cal.mutex.RLock()
-	lastUpdated := cal.lastUpdated
-	cal.mutex.RUnlock()
 
-	if time.Since(lastUpdated) > cal.period || cal.cache == nil {
+	if cal.cache == nil {
+		cal.mutex.RUnlock()
+
 		cal.mutex.Lock()
 		defer cal.mutex.Unlock()
 
@@ -55,13 +56,26 @@ func (cal *cachedCalendar) events() (calendarEvents, error) {
 
 		cal.lastUpdated = time.Now()
 
+		if cal.cleanTimer != nil {
+			cal.cleanTimer.Stop()
+		}
+
+		cal.cleanTimer = time.AfterFunc(cal.period, cal.clean)
+
 		return cal.cache, err
 	}
 
-	cal.mutex.RLock()
 	defer cal.mutex.RUnlock()
 
 	return cal.cache, nil
+}
+
+func (cal *cachedCalendar) clean() {
+	cal.mutex.Lock()
+	defer cal.mutex.Unlock()
+
+	cal.cache = nil
+	cal.cleanTimer = nil
 }
 
 // calDavCalendar implements calendar, fetches events from a caldav server.

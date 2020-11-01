@@ -285,7 +285,7 @@ func (uc *userCalendar) calendar() (calendar, error) {
 		}
 
 		// TODO: Cache time from config.
-		uc.cal = newCachedCalendar(uc.cal, time.Minute*5)
+		uc.cal = newCachedCalendar(uc.cal, 5*time.Minute)
 	}
 
 	return uc.cal, err
