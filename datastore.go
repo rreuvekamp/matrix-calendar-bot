@@ -82,8 +82,11 @@ type user struct {
 	calendarsMutex sync.RWMutex
 	calendars      []*userCalendar
 
-	persist   *sqlDB
-	timerQuit chan struct{}
+	persist *sqlDB
+
+	reminders             []reminder
+	reminderNotifyUpdated chan struct{}
+	remindersMutex        sync.RWMutex
 }
 
 func (u *user) store(roomID id.RoomID) error {
@@ -205,6 +208,10 @@ func (u *user) setupReminderTimer(send func(*calendarEvent, id.RoomID), until ti
 	cal, err := u.combinedCalendar()
 	u.calendarsMutex.RUnlock()
 
+	// TODO: @@@@@@@@@@@@
+	// Rewrote timers, haven't tested it yet.
+	// Go fix it.
+
 	if err != nil {
 		return err
 	}
@@ -214,37 +221,70 @@ func (u *user) setupReminderTimer(send func(*calendarEvent, id.RoomID), until ti
 		return err
 	}
 
-	u.mutex.RLock()
-	if u.timerQuit != nil {
-		u.timerQuit <- struct{}{}
-	}
-	u.mutex.RUnlock()
+	newReminders := []reminder{}
 
-	quit := make(chan struct{})
-
-	u.mutex.Lock()
-	u.timerQuit = quit
-	u.mutex.Unlock()
-
-	go func() {
-		for _, ev := range evs {
-			fmt.Println("Setup reminder for:", ev.text)
-
-			select {
-			case <-quit:
-				return
-			case <-time.After(time.Until(ev.from)):
-			}
-			send(ev, u.RoomID())
-			fmt.Println("Reminder for: " + ev.text)
+	for _, ev := range evs {
+		rem := reminder{
+			when:  ev.from,
+			event: ev,
 		}
 
-		u.mutex.Lock()
-		u.timerQuit = nil
-		u.mutex.Unlock()
-	}()
+		newReminders = append(newReminders, rem)
+	}
+
+	u.remindersMutex.Lock()
+
+	mustUpdate := false
+	if len(u.reminders) > 0 && u.reminders[0] != newReminders[0].event {
+		mustUpdate = true
+	}
+
+	u.reminders = newReminders
+
+	if u.reminderNotifyUpdated == nil {
+		u.reminderNotifyUpdated = make(chan struct{})
+		go u.reminderLoop()
+	} else if mustUpdate {
+		u.reminderNotifyUpdated <- struct{}{}
+	}
+	u.reminderMutex.Unlock()
 
 	return nil
+}
+
+func (u *user) reminderLoop() {
+	for {
+		u.remindersMutex.RLock()
+		if len(u.reminders) == 0 {
+			u.remindersMutex.RUnlock()
+			break
+		}
+
+		rem := u.reminders[0]
+
+		u.remindersMutex.RLock()
+
+		fmt.Println("Setup reminder for:", rem)
+
+		select {
+		case <-quit:
+			return
+		case <-time.After(time.Until(rem.when)):
+		}
+
+		u.remindersMutex.Lock()
+		u.reminders = append(u.reminders[1:]...)
+		u.remindersMutex.Unlock()
+
+		send(ev, u.RoomID())
+		fmt.Println("Reminder for: " + ev.text)
+	}
+}
+
+type reminder struct {
+	when time.Time
+
+	event *calendarEvent
 }
 
 func (u *user) ExistsInDB() bool {

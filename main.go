@@ -52,7 +52,7 @@ func main() {
 
 	fmt.Println("Setting up reminder timers...")
 
-	if true {
+	if false {
 		setupReminderTimers(m, data)
 	}
 
