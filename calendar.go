@@ -288,3 +288,13 @@ func (c calendarEvents) Less(i, j int) bool {
 func (c calendarEvents) Swap(i, j int) {
 	c[i], c[j] = c[j], c[i]
 }
+
+type mockCalendar calendarEvents
+
+func newMockCalendar(events []*calendarEvent) mockCalendar {
+	return mockCalendar(calendarEvents(events))
+}
+
+func (evs mockCalendar) events() (calendarEvents, error) {
+	return calendarEvents(evs), nil
+}

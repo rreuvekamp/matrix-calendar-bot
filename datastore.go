@@ -84,9 +84,8 @@ type user struct {
 
 	persist *sqlDB
 
-	reminders             []reminder
-	reminderNotifyUpdated chan struct{}
-	remindersMutex        sync.RWMutex
+	stopReminderTimer      chan struct{}
+	stopReminderTimerMutex sync.Mutex
 }
 
 func (u *user) store(roomID id.RoomID) error {
@@ -203,7 +202,7 @@ func (u *user) hasCalendar(name string) bool {
 	return false
 }
 
-func (u *user) setupReminderTimer(send func(*calendarEvent, id.RoomID), until time.Time) error {
+func (u *user) createReminders(until time.Time) ([]reminder, error) {
 	u.calendarsMutex.RLock()
 	cal, err := u.combinedCalendar()
 	u.calendarsMutex.RUnlock()
@@ -213,15 +212,15 @@ func (u *user) setupReminderTimer(send func(*calendarEvent, id.RoomID), until ti
 	// Go fix it.
 
 	if err != nil {
-		return err
+		return []reminder{}, err
 	}
 
 	evs, err := cal.events(time.Now(), until)
 	if err != nil {
-		return err
+		return []reminder{}, err
 	}
 
-	newReminders := []reminder{}
+	reminders := []reminder{}
 
 	for _, ev := range evs {
 		rem := reminder{
@@ -229,55 +228,49 @@ func (u *user) setupReminderTimer(send func(*calendarEvent, id.RoomID), until ti
 			event: ev,
 		}
 
-		newReminders = append(newReminders, rem)
+		reminders = append(reminders, rem)
 	}
 
-	u.remindersMutex.Lock()
+	return reminders, nil
+}
 
-	mustUpdate := false
-	if len(u.reminders) > 0 && u.reminders[0] != newReminders[0].event {
-		mustUpdate = true
+func (u *user) setupReminderTimer(send func(*calendarEvent), until time.Time) error {
+	reminders, err := u.createReminders(until)
+	if err != nil {
+		return err
 	}
 
-	u.reminders = newReminders
+	u.stopReminderTimerMutex.Lock()
+	defer u.stopReminderTimerMutex.Unlock()
 
-	if u.reminderNotifyUpdated == nil {
-		u.reminderNotifyUpdated = make(chan struct{})
-		go u.reminderLoop()
-	} else if mustUpdate {
-		u.reminderNotifyUpdated <- struct{}{}
+	if u.stopReminderTimer != nil {
+		u.stopReminderTimer <- struct{}{}
 	}
-	u.reminderMutex.Unlock()
+
+	u.stopReminderTimer = make(chan struct{}, 1)
+
+	go reminderLoop(reminders, u.stopReminderTimer, send)
 
 	return nil
 }
 
-func (u *user) reminderLoop() {
+func reminderLoop(reminders []reminder, stop <-chan struct{}, send func(*calendarEvent)) {
 	for {
-		u.remindersMutex.RLock()
-		if len(u.reminders) == 0 {
-			u.remindersMutex.RUnlock()
+		if len(reminders) == 0 {
 			break
 		}
 
-		rem := u.reminders[0]
-
-		u.remindersMutex.RLock()
-
-		fmt.Println("Setup reminder for:", rem)
+		next := reminders[0]
 
 		select {
-		case <-quit:
-			return
-		case <-time.After(time.Until(rem.when)):
+		case <-stop:
+			break
+		case <-time.After(time.Until(next.when)):
+			send(next.event)
+			fmt.Println("Reminder for: " + next.event.text)
+
+			reminders = append([]reminder{}, reminders[1:]...)
 		}
-
-		u.remindersMutex.Lock()
-		u.reminders = append(u.reminders[1:]...)
-		u.remindersMutex.Unlock()
-
-		send(ev, u.RoomID())
-		fmt.Println("Reminder for: " + ev.text)
 	}
 }
 

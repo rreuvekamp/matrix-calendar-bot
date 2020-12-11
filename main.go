@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 	"time"
-
-	"maunium.net/go/mautrix/id"
 )
 
 func main() {
@@ -62,11 +60,11 @@ func main() {
 }
 
 func setupReminderTimers(m matrixBot, data *store) {
-	send := func(ev *calendarEvent, roomID id.RoomID) {
-		m.sendMessage(roomID, "Reminder for: "+ev.text, "")
-	}
-
 	for _, user := range data.users {
+		send := func(ev *calendarEvent) {
+			m.sendMessage(user.roomID, "Reminder for: "+ev.text, "")
+		}
+
 		go func() {
 			for {
 				fmt.Println("call setup reminder timers")
