@@ -44,28 +44,37 @@ func TestCreateRemindersCreatesTheCorrectReminders(t *testing.T) {
 
 	events := []*calendarEvent{ev0, ev1, ev2, ev3, ev4, ev5}
 
-	u := user{
+	timer := newReminderTimer(nil, 30*time.Minute, newMockCalendar(events), []time.Duration{0 * time.Second, 30 * time.Minute})
+	/*u := user{
 		calendars: []*userCalendar{
 			&userCalendar{
 				cal: newMockCalendar(events),
 			},
 		},
-	}
+	}*/
 
-	reminders, err := u.createReminders(time.Now().Add(time.Minute * 30))
+	reminders, err := timer.createReminders()
 	if err != nil {
 		t.Error(err)
 	}
 
-	if len(reminders) != 2 {
+	for _, r := range reminders {
+		t.Log(r.event.text)
+	}
+
+	if len(reminders) != 4 {
 		t.Errorf("received incorrect amount of reminders, got: %d", len(reminders))
 	}
 
-	assertEqual(t, reminders[0].event, ev2, "reminder has correct event")
-	assertEqual(t, reminders[1].event, ev3, "reminder has correct event")
+	assertEqual(t, *reminders[0].event, *ev2, "reminder has correct event")
+	assertEqual(t, *reminders[1].event, *ev4, "reminder has correct event")
+	assertEqual(t, *reminders[2].event, *ev3, "reminder has correct event")
+	assertEqual(t, *reminders[3].event, *ev4, "reminder has correct event")
 
 	assertEqual(t, reminders[0].when, ev2.from, "reminder has correct when")
-	assertEqual(t, reminders[1].when, ev3.from, "reminder has correct when")
+	assertEqual(t, reminders[1].when, ev4.from.Add(-30*time.Minute), "reminder has correct when")
+	assertEqual(t, reminders[2].when, ev3.from, "reminder has correct when")
+	assertEqual(t, reminders[3].when, ev4.from, "reminder has correct when")
 }
 
 func TestReminderLoopSendsTheCorrectReminders(t *testing.T) {
@@ -115,70 +124,6 @@ func TestReminderLoopSendsTheCorrectReminders(t *testing.T) {
 	assertEqual(t, received[0], ev0, "reminder has correct event")
 	assertEqual(t, received[1], ev1, "reminder has correct event")
 	assertEqual(t, received[2], ev2, "reminder has correct event")
-}
-
-func TestReminderLoopReceivesUpdatesCorrectly(t *testing.T) {
-	ev0 := &calendarEvent{
-		from: time.Now(),
-		to:   time.Now().Add(75 * time.Minute),
-		text: "test event 0",
-	}
-	r0 := reminder{
-		time.Now(),
-		ev0,
-	}
-
-	ev1 := &calendarEvent{
-		from: time.Now(),
-		to:   time.Now().Add(75 * time.Minute),
-		text: "test event 1",
-	}
-	r1 := reminder{
-		time.Now(),
-		ev1,
-	}
-
-	ev2 := &calendarEvent{
-		from: time.Now(),
-		to:   time.Now().Add(75 * time.Minute),
-		text: "test event 2",
-	}
-	r2 := reminder{
-		time.Now(),
-		ev2,
-	}
-
-	ev3 := &calendarEvent{
-		from: time.Now(),
-		to:   time.Now().Add(75 * time.Minute),
-		text: "test event 2",
-	}
-	r3 := reminder{
-		time.Now(),
-		ev3,
-	}
-
-	reminders := []reminder{r0, r1, r2}
-
-	received := []*calendarEvent{}
-
-	update := make(chan []reminder, 1)
-
-	reminderCallback := func(ev *calendarEvent) {
-		received = append(received, ev)
-		if ev == ev1 {
-			update <- []reminder{r3, r2}
-		}
-	}
-
-	reminderLoop(reminders, update, reminderCallback)
-
-	assertEqual(t, 4, len(received), "received correct amount of reminders")
-
-	assertEqual(t, received[0], ev0, "reminder has correct event")
-	assertEqual(t, received[1], ev1, "reminder has correct event")
-	assertEqual(t, received[2], ev3, "reminder has correct event")
-	assertEqual(t, received[3], ev2, "reminder has correct event")
 }
 
 func assertEqual(t *testing.T, a interface{}, b interface{}, message string) {

@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -84,8 +83,7 @@ type user struct {
 
 	persist *sqlDB
 
-	stopReminderTimer      chan struct{}
-	stopReminderTimerMutex sync.Mutex
+	reminderTimer reminderTimer
 }
 
 func (u *user) store(roomID id.RoomID) error {
@@ -202,82 +200,18 @@ func (u *user) hasCalendar(name string) bool {
 	return false
 }
 
-func (u *user) createReminders(until time.Time) ([]reminder, error) {
-	u.calendarsMutex.RLock()
+func (u *user) initialiseReminderTimer(send func(*calendarEvent), forDuration time.Duration) error {
 	cal, err := u.combinedCalendar()
-	u.calendarsMutex.RUnlock()
-
-	// TODO: @@@@@@@@@@@@
-	// Rewrote timers, haven't tested it yet.
-	// Go fix it.
-
-	if err != nil {
-		return []reminder{}, err
-	}
-
-	evs, err := cal.events(time.Now(), until)
-	if err != nil {
-		return []reminder{}, err
-	}
-
-	reminders := []reminder{}
-
-	for _, ev := range evs {
-		rem := reminder{
-			when:  ev.from,
-			event: ev,
-		}
-
-		reminders = append(reminders, rem)
-	}
-
-	return reminders, nil
-}
-
-func (u *user) setupReminderTimer(send func(*calendarEvent), until time.Time) error {
-	reminders, err := u.createReminders(until)
 	if err != nil {
 		return err
 	}
 
-	u.stopReminderTimerMutex.Lock()
-	defer u.stopReminderTimerMutex.Unlock()
-
-	if u.stopReminderTimer != nil {
-		u.stopReminderTimer <- struct{}{}
-	}
-
-	u.stopReminderTimer = make(chan struct{}, 1)
-
-	go reminderLoop(reminders, u.stopReminderTimer, send)
-
-	return nil
+	u.reminderTimer = newReminderTimer(send, forDuration, cal, []time.Duration{0 * time.Second, 30 * time.Minute})
+	return u.reminderTimer.set()
 }
 
-func reminderLoop(reminders []reminder, stop <-chan struct{}, send func(*calendarEvent)) {
-	for {
-		if len(reminders) == 0 {
-			break
-		}
-
-		next := reminders[0]
-
-		select {
-		case <-stop:
-			break
-		case <-time.After(time.Until(next.when)):
-			send(next.event)
-			fmt.Println("Reminder for: " + next.event.text)
-
-			reminders = append([]reminder{}, reminders[1:]...)
-		}
-	}
-}
-
-type reminder struct {
-	when time.Time
-
-	event *calendarEvent
+func (u *user) restartReminderTimer() error {
+	return u.reminderTimer.set()
 }
 
 func (u *user) ExistsInDB() bool {

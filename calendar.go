@@ -16,6 +16,10 @@ type calendar interface {
 	events() (calendarEvents, error)
 }
 
+type queryableCalendar interface {
+	eventsBetween(from, to time.Time) (calendarEvents, error)
+}
+
 // calendarEvent represents a single calendar item.
 type calendarEvent struct {
 	from, to time.Time
@@ -171,9 +175,9 @@ type combinedCalendar []calendar
 
 var errNoCalendars = errors.New("no calendars")
 
-// events gives the calendarEvents from the underlying calendars which start between
-// the gives dates.
-func (cals combinedCalendar) events(from time.Time, until time.Time) (calendarEvents, error) {
+// eventsBetween gives the calendarEvents from the underlying calendars which start
+// between the gives dates.
+func (cals combinedCalendar) eventsBetween(from time.Time, until time.Time) (calendarEvents, error) {
 	var events []*calendarEvent
 
 	if len(cals) == 0 {
@@ -297,4 +301,8 @@ func newMockCalendar(events []*calendarEvent) mockCalendar {
 
 func (evs mockCalendar) events() (calendarEvents, error) {
 	return calendarEvents(evs), nil
+}
+
+func (evs mockCalendar) eventsBetween(from, to time.Time) (calendarEvents, error) {
+	return calendarEvents(evs).between(from, to), nil
 }

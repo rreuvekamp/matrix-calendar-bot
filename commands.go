@@ -178,7 +178,7 @@ func cmdListEvents(u *user, period string, year int, week int) (cmdReply, error)
 
 	fmt.Println(from, to)
 
-	events, err := cal.events(from, to)
+	events, err := cal.eventsBetween(from, to)
 	if err != nil {
 		if err == errNoCalendars {
 			return cmdReply{"You haven't configured any calendars. Use the 'cal add' command to start.", ""}, nil

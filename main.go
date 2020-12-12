@@ -50,7 +50,7 @@ func main() {
 
 	fmt.Println("Setting up reminder timers...")
 
-	if false {
+	if true {
 		setupReminderTimers(m, data)
 	}
 
@@ -62,13 +62,22 @@ func main() {
 func setupReminderTimers(m matrixBot, data *store) {
 	for _, user := range data.users {
 		send := func(ev *calendarEvent) {
-			m.sendMessage(user.roomID, "Reminder for: "+ev.text, "")
+			msg := ""
+
+			timeUntil := ev.from.Sub(time.Now())
+
+			if timeUntil.Minutes() > 0 {
+				msg = fmt.Sprintf("Reminder: %q starts in %d minutes", ev.text, int(timeUntil.Minutes()))
+			} else {
+				msg = fmt.Sprintf("Reminder: %q starts now", ev.text)
+			}
+			m.sendMessage(user.roomID, msg, "")
 		}
 
 		go func() {
 			for {
 				fmt.Println("call setup reminder timers")
-				err := user.setupReminderTimer(send, time.Now().Add(65*time.Minute))
+				err := user.initialiseReminderTimer(send, 65*time.Minute)
 				if err != nil {
 					fmt.Println(err)
 				}
